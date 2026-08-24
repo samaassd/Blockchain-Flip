@@ -1,0 +1,193 @@
+{
+  "app_name": "ArbScout",
+  "personality": "7 Dark-First Utility DARK",
+  "personality_one_liner": "A sleek, command-center interface that prioritizes live data, speed, and actionable insights over decorative noise.",
+  "color": {
+    "surface": "#0B101E",
+    "onSurface": "#F8FAFC",
+    "surfaceSecondary": "#151C2C",
+    "onSurfaceSecondary": "#94A3B8",
+    "surfaceTertiary": "#1E293B",
+    "onSurfaceTertiary": "#CBD5E1",
+    "surfaceInverse": "#FFFFFF",
+    "onSurfaceInverse": "#020617",
+    "brand": "#00E5FF",
+    "brandPrimary": "#00E5FF",
+    "onBrandPrimary": "#020617",
+    "brandSecondary": "#14B8A6",
+    "onBrandSecondary": "#FFFFFF",
+    "brandTertiary": "#083344",
+    "onBrandTertiary": "#00E5FF",
+    "success": "#10B981",
+    "onSuccess": "#FFFFFF",
+    "warning": "#F59E0B",
+    "onWarning": "#020617",
+    "error": "#EF4444",
+    "onError": "#FFFFFF",
+    "border": "#1E293B",
+    "borderStrong": "#334155",
+    "divider": "#1E293B"
+  },
+  "typography": {
+    "displayFontFamily": "Barlow Condensed",
+    "textFontFamily": "IBM Plex Sans",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Handle spacing correctly dont have extra spaces where its not required, handle padding and margin corectly and subtle for buttons and components",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 6,
+    "md": 12,
+    "lg": 20,
+    "pill": 999
+  },
+  "shadow_tier": "0",
+  "navigation": "bottom_tabs",
+  "icon_set": "Phosphor",
+  "glassmorphism": {
+    "enabled": "false",
+    "do's": [
+      "Use solid surfaceSecondary for clarity on dense data screens"
+    ],
+    "dont's": [
+      "Do not use blur on metrics or scanner rows to ensure max readability"
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-glass-effect",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "screens": [
+    {
+      "name": "Dashboard",
+      "purpose": "Provides a high-level view of portfolio value and daily P&L, answering 'what do I have and what is it worth?' at a glance.",
+      "states": {
+        "loading": "Centered spinner",
+        "empty": "Icon + 'No assets found' + 'Connect Wallet'",
+        "error": "Unable to load portfolio data + Retry button"
+      },
+      "layout": "Centered portfolio view using large condensed typography for total value. Modular cards for quick asset exposure and high-level P&L. Use subtle gradient overlays for depth. Avoid dense tables here; keep day-level volatility in secondary views. Background image with heavy scrim behind the main balance."
+    },
+    {
+      "name": "Scanner",
+      "purpose": "A live, filterable feed of arbitrage opportunities across multiple DEXs.",
+      "states": {
+        "loading": "Skeleton loading rows",
+        "empty": "Illustration + 'No current arbitrage opportunities' + 'Refresh'",
+        "error": "Connection error + Retry button"
+      },
+      "layout": "Stacked list of cards. Each card displays the token pair, buy/sell DEX logos, spread %, and estimated profit. Use a 'dark-first utility' approach with sharp typography for numbers (spread, profit) and dividers instead of heavy card shadows. High-impact metrics dominate the visual hierarchy."
+    },
+    {
+      "name": "OpportunityDetail",
+      "purpose": "Detailed view of a specific arbitrage trade with route visualization and simulated execution.",
+      "states": {
+        "loading": "Spinner",
+        "empty": "Opportunity expired",
+        "error": "Error fetching pool data"
+      },
+      "layout": "Visual route representation showing the swap path. Custom forms for trade amount input using steppers or sliders. A large, sticky 'Execute Trade' primary CTA anchored at the bottom (thumb zone) inside a solid container. Includes gas estimation and slippage details clearly separated."
+    },
+    {
+      "name": "History",
+      "purpose": "Log of past trades and realized P&L.",
+      "states": {
+        "loading": "Spinner",
+        "empty": "Clipboard icon + 'No trade history yet'",
+        "error": "Failed to load history"
+      },
+      "layout": "Simple, dense stacked list. Each row shows date, pair, route, and realized profit/loss in green/red. Uses a top segmented control to filter by timeframe or status."
+    },
+    {
+      "name": "Settings",
+      "purpose": "User preferences, profile, and app configuration.",
+      "states": {
+        "loading": "Spinner",
+        "empty": "N/A",
+        "error": "N/A"
+      },
+      "layout": "Standard single-column stacked list of settings rows. Categories separated by clear headers. Tinted icon containers for each setting row."
+    }
+  ],
+  "images": {
+    "hero_dashboard_bg": {
+      "url": "https://images.unsplash.com/photo-1639322537231-2f206e06af84?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1OTV8MHwxfHNlYXJjaHwyfHxhYnN0cmFjdCUyMGRhcmslMjBjcnlwdG8lMjBibG9ja2NoYWluJTIwZ3JpZHxlbnwwfHx8fDE3ODc1NjIzNzd8MA&ixlib=rb-4.1.0&q=85",
+      "alt": "Abstract dark crypto blockchain grid background"
+    },
+    "hero_scanner_bg": {
+      "url": "https://images.unsplash.com/photo-1786785712665-bb11ca2f0117?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NTJ8MHwxfHNlYXJjaHwyfHxkYXJrJTIwYWJzdHJhY3QlMjBmaW5hbmNpYWwlMjBjaGFydCUyMG51bWJlcnN8ZW58MHx8fHwxNzg3NTYyMzc3fDA&ixlib=rb-4.1.0&q=85",
+      "alt": "Long exposure light trails financial chart numbers"
+    },
+    "hero_auth_bg": {
+      "url": "https://images.pexels.com/photos/30767247/pexels-photo-30767247.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "alt": "3D depiction of the Bitcoin symbol with a digital glow"
+    },
+    "hero_history_bg": {
+      "url": "https://images.unsplash.com/photo-1639322537138-5e513100b36e?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1OTV8MHwxfHNlYXJjaHwzfHxhYnN0cmFjdCUyMGRhcmslMjBjcnlwdG8lMjBibG9ja2NoYWluJTIwZ3JpZHxlbnwwfHx8fDE3ODc1NjIzNzd8MA&ixlib=rb-4.1.0&q=85",
+      "alt": "Connected cubes abstract"
+    },
+    "empty_state_illustration": {
+      "url": "https://images.unsplash.com/photo-1762267683517-6e9bc20675e9?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NTJ8MHwxfHNlYXJjaHwzfHxkYXJrJTIwYWJzdHJhY3QlMjBmaW5hbmNpYWwlMjBjaGFydCUyMG51bWJlcnN8ZW58MHx8fHwxNzg3NTYyMzc3fDA&ixlib=rb-4.1.0&q=85",
+      "alt": "Abstract streaks of light"
+    },
+    "dex_uniswap_logo": {
+      "url": "fallback_initials",
+      "alt": "Original Query: Uniswap logo transparent, Fallback: UNI"
+    },
+    "dex_pancakeswap_logo": {
+      "url": "fallback_initials",
+      "alt": "Original Query: Pancakeswap logo transparent, Fallback: PAN"
+    },
+    "dex_sushiswap_logo": {
+      "url": "fallback_initials",
+      "alt": "Original Query: Sushiswap logo transparent, Fallback: SUS"
+    },
+    "dex_curve_logo": {
+      "url": "fallback_initials",
+      "alt": "Original Query: Curve finance logo transparent, Fallback: CRV"
+    },
+    "dex_balancer_logo": {
+      "url": "fallback_initials",
+      "alt": "Original Query: Balancer logo transparent, Fallback: BAL"
+    }
+  ],
+  "instructions_to_main_agent": [
+    "Use Dark-First Utility as the sole personality. The UI must be highly functional, utilizing deep navy (#0B101E) base with bright Cyan/Lime accents, as requested by the user.",
+    "Implement Barlow Condensed for all metrics, numbers, and headers to emphasize high-impact data. Use IBM Plex Sans for highly readable body copy.",
+    "Skip glassmorphism entirely. Data density and contrast are paramount in a live crypto scanner. Use sharp borders and tonal separation instead of shadows.",
+    "Ensure every background image is darkened using a heavy vertical gradient scrim (transparent to >=70% surfaceInverse) to guarantee foreground text legibility.",
+    "For the DEX logos (Uniswap, PancakeSwap, etc.), the Unsplash/Pexels fetch failed. Fall back to initials (e.g., 'UNI', 'PAN') inside a brandTertiary tinted circle.",
+    "The Opportunity Detail screen must feature a sticky 'Execute Trade' CTA at the bottom, anchored above the home indicator, regardless of scroll position.",
+    "Use success green (#10B981) for profit/gains and error red (#EF4444) for losses/spreads, ensuring these are only used meaningfully for status."
+  ],
+  "haptics": {
+    "events": {
+      "primary_button_press": "impactLight",
+      "tab_change": "selection",
+      "trade_execution": "notificationSuccess",
+      "pull_to_refresh": "impactMedium"
+    }
+  }
+}
