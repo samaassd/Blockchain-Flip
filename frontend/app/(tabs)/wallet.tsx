@@ -5,7 +5,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   useAppKit,
   useAccount,
-  useProvider,
   useWalletInfo,
 } from "@reown/appkit-react-native";
 import { theme } from "@/src/theme";
@@ -16,20 +15,14 @@ export default function Wallet() {
   const insets = useSafeAreaInsets();
   const [err, setErr] = useState("");
 
-  // AppKit hooks — wrapped defensively
-  let open: any, disconnect: any, address = "", chainId: any = 0, isConnected = false, walletInfo: any = null;
-  try {
-    const appKit = useAppKit();
-    open = appKit?.open;
-    disconnect = appKit?.disconnect;
-    const acc = useAccount() || ({} as any);
-    address = acc.address || "";
-    chainId = acc.chainId || 0;
-    isConnected = !!acc.isConnected;
-    walletInfo = useWalletInfo?.() || null;
-  } catch (e: any) {
-    err || setErr("Wallet SDK unavailable");
-  }
+  const appKit = useAppKit();
+  const acc = useAccount() || ({} as any);
+  const address = acc.address || "";
+  const chainId = acc.chainId || 0;
+  const isConnected = !!acc.isConnected;
+  const walletInfo = useWalletInfo?.() || null;
+  const open = appKit?.open;
+  const disconnect = appKit?.disconnect;
 
   const chain = CHAIN_LIST.find((c) => c.chainId === Number(chainId));
   const short = address ? `${address.slice(0, 6)}…${address.slice(-4)}` : "";

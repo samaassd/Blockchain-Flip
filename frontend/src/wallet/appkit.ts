@@ -1,5 +1,6 @@
 import "@walletconnect/react-native-compat";
 import "react-native-get-random-values";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { createAppKit, AppKit, AppKitProvider } from "@reown/appkit-react-native";
 import { EthersAdapter } from "@reown/appkit-ethers-react-native";
@@ -16,6 +17,30 @@ const metadata = {
   redirect: {
     native: "frontend://",
     universal: "https://blockchain-flip.preview.emergentagent.com",
+  },
+};
+
+const appKitStorage = {
+  async getKeys() {
+    return [...await AsyncStorage.getAllKeys()];
+  },
+  async getEntries<T = any>() {
+    const entries = await AsyncStorage.multiGet(await AsyncStorage.getAllKeys());
+    return entries.flatMap(([key, value]) => {
+      if (value === null) return [];
+      try { return [[key, JSON.parse(value)] as [string, T]]; } catch { return [[key, value] as [string, T]]; }
+    });
+  },
+  async getItem<T = any>(key: string) {
+    const value = await AsyncStorage.getItem(key);
+    if (value === null) return undefined;
+    try { return JSON.parse(value) as T; } catch { return value as T; }
+  },
+  async setItem<T = any>(key: string, value: T) {
+    await AsyncStorage.setItem(key, JSON.stringify(value));
+  },
+  async removeItem(key: string) {
+    await AsyncStorage.removeItem(key);
   },
 };
 
@@ -73,6 +98,7 @@ export function initAppKit() {
       networks: NETWORKS as any,
       defaultNetwork: NETWORKS[0] as any,
       metadata,
+      storage: appKitStorage,
       themeMode: "dark",
     });
     return appKitInstance;

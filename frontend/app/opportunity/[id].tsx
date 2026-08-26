@@ -24,18 +24,14 @@ export default function OpportunityDetail() {
   const insets = useSafeAreaInsets();
   const { user, refreshUser } = useAuth();
 
-  // Wallet hooks (defensive)
-  let openWallet: any, address = "", chainId: any = 0, isConnected = false, wProvider: any = null;
-  try {
-    const appKit = useAppKit();
-    openWallet = appKit?.open;
-    const acc = useAccount() || ({} as any);
-    address = acc.address || "";
-    chainId = acc.chainId || 0;
-    isConnected = !!acc.isConnected;
-    const prov = useProvider?.() as any;
-    wProvider = prov?.walletProvider || prov?.provider || null;
-  } catch {}
+  const appKit = useAppKit();
+  const acc = useAccount() || ({} as any);
+  const address = acc.address || "";
+  const chainId = acc.chainId || 0;
+  const isConnected = !!acc.isConnected;
+  const prov = useProvider?.() as any;
+  const wProvider = prov?.walletProvider || prov?.provider || null;
+  const openWallet = appKit?.open;
 
   const [opp, setOpp] = useState<Opportunity | null>(null);
   const [loading, setLoading] = useState(true);
