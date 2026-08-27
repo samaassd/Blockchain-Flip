@@ -51,13 +51,26 @@ export const TOKEN_ADDRESSES: Record<string, Record<number, string>> = {
     137: "0x172370d5Cd63279eFa6d502DAB29171933a610AF",
     42161: "0x11cDb42B0EB46D95f990BeDD4695A6e3fA034978",
   },
+  // ARB is an ERC-20 token (not the gas coin) on both mainnet and Arbitrum One
+  arbitrum: {
+    1: "0xB50721BCf8d664c30412Cfbc6cf7a15145234ad1",
+    42161: "0x912CE59144191C1204E64559FE8253a0e49E6548",
+  },
+};
+
+// USDC per chain — used as the counter-asset when the arb token is the chain's native coin
+export const USDC: Record<number, string> = {
+  1:     "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+  137:   "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
+  56:    "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
+  42161: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+  8453:  "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
 };
 
 // Native token → chainId map
 export const NATIVE_TOKENS: Record<string, number> = {
   ethereum: 1,
   "polygon-ecosystem-token": 137,
-  arbitrum: 42161,
 };
 
 export function tokenAddressFor(tokenId: string, chainId: number): string | null {

@@ -29,3 +29,7 @@ Ethereum, Polygon, BNB Chain, Arbitrum, Base, World Chain, Shape (EVM) + Solana 
 - **Solana wallet signing** is preview-stub — no Reown Solana RN adapter available; production needs Phantom deep-link or a Solana WalletConnect flow.
 - **World Chain / Shape** support wallet connection but no Uniswap V2 router deployed — swaps are gracefully disabled on those chains.
 - **WalletConnect deep-linking to MetaMask/Trust/Rainbow** only works fully on a native/dev build (Publish button).
+
+## Update (Aug 27, 2026)
+- Fixed "Native → native arbitrage not supported" error: native-coin opportunities (ETH, POL) now execute as native → USDC swaps via the V2 router instead of being blocked (src/wallet/swap.ts, contracts.ts).
+- Corrected ARB mapping: ARB is now treated as an ERC-20 (mainnet + Arbitrum One), not a native coin.

@@ -1,6 +1,6 @@
 import { BrowserProvider, Contract, parseUnits, formatUnits } from "ethers";
 import {
-  ROUTERS, ERC20_ABI, ROUTER_ABI, WRAPPED_NATIVE,
+  ROUTERS, ROUTER_ABI, WRAPPED_NATIVE, USDC,
   tokenAddressFor, explorerTx,
 } from "@/src/wallet/contracts";
 
@@ -34,23 +34,23 @@ export async function executeOnChainSwap(params: {
   const signer = await provider.getSigner(userAddress);
   const routerC = new Contract(router.address, ROUTER_ABI, signer);
 
-  // NATIVE → TOKEN swap: send `amountUsd / nativePrice` native
-  // For simplicity we treat basePriceUsd as USD/native for path resolution
+  // If the arb token IS the chain's native coin (e.g. ETH, POL), a native→native
+  // swap is meaningless (just wrapping). Instead we realize the arbitrage against
+  // USDC: swap native → USDC. basePriceUsd is the native coin's USD price here.
   const isNative = tokenAddr === "NATIVE";
-  if (isNative) {
-    throw new Error("Native → native arbitrage not supported directly. Choose an ERC-20 pair.");
-  }
 
-  // Convert USD amount into native token amount (approx via base_price).
-  // In production, quote the exact input from an aggregator; here we use CoinGecko base_price
-  // of the target token as an indicative reference and simply send `amountUsd / nativePriceUsd` native.
-  // We ask the router for getAmountsOut to obtain amountOutMin using 0.5% slippage.
-  const nativePriceUsd = await getNativePriceUsd(chainId);
+  // Convert USD amount into native token amount.
+  // For native-coin opportunities the token's own price IS the native price;
+  // otherwise use the chain's indicative native price.
+  const nativePriceUsd = isNative ? basePriceUsd : await getNativePriceUsd(chainId);
   if (nativePriceUsd <= 0) throw new Error("Could not resolve native price");
   const nativeIn = amountUsd / nativePriceUsd;
   const amountIn = parseUnits(nativeIn.toFixed(6), 18);
 
-  const path = [wnative, tokenAddr];
+  const outToken = isNative ? USDC[chainId] : tokenAddr;
+  if (!outToken) throw new Error("No USDC pair available on this chain");
+
+  const path = [wnative, outToken];
   const quoted = (await routerC.getAmountsOut(amountIn, path)) as bigint[];
   const quotedOut = quoted[quoted.length - 1];
   const amountOutMin = (quotedOut * 9950n) / 10000n; // 0.5% slippage

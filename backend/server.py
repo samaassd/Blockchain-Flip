@@ -737,6 +737,15 @@ async def reconcile_trade(body: ReconcileIn, user=Depends(current_user)):
 async def dexes(user=Depends(current_user)):
     return {"dexes": DEXES}
 
+
+@api.get("/export/source")
+async def export_source():
+    from fastapi.responses import FileResponse
+    zip_path = Path(__file__).parent / "exports_arbscout.zip"
+    if not zip_path.exists():
+        raise HTTPException(status_code=404, detail="Export not found")
+    return FileResponse(str(zip_path), media_type="application/zip", filename="arbscout-source.zip")
+
 app.include_router(api)
 app.add_middleware(
     CORSMiddleware,
