@@ -97,6 +97,8 @@ class PublicUser(BaseModel):
     id: str
     email: EmailStr
     display_name: Optional[str] = None
+    picture: Optional[str] = None
+    auth_provider: Optional[str] = "email"
     balance_usd: float = 10000.0
     total_pnl: float = 0.0
 
@@ -144,6 +146,8 @@ def user_public(doc: dict) -> PublicUser:
         id=doc["id"],
         email=doc["email"],
         display_name=doc.get("display_name"),
+        picture=doc.get("picture"),
+        auth_provider=doc.get("auth_provider", "email"),
         balance_usd=float(doc.get("balance_usd", 10000.0)),
         total_pnl=float(doc.get("total_pnl", 0.0)),
     )

@@ -107,3 +107,7 @@
   - Frontend: AuthContext.loginWithGoogle() (web: window.location redirect; mobile: WebBrowser.openAuthSessionAsync + Linking listeners), session_id processing on mount (hash/search on web, deep links on mobile), "Continue with Google" buttons on login.tsx and register.tsx.
 - Wallet guard on opportunity screen ON-CHAIN toggle now matches Settings: toast + redirect to Wallet tab when no wallet connected.
 - Existing email/password auth (demo@arbscout.io / demo1234) verified working after changes.
+
+## Session Update 2 (Aug 27, 2026)
+- Profile in Settings: Google photo avatar (user.picture), GOOGLE/EMAIL ACCOUNT badge, new SESSION section with sign-out. Backend PublicUser now returns picture + auth_provider.
+- Auto Mode: SettingsContext gains autoMode/autoMinNet(5|10|25|50)/autoTradeSize(500|1000|2500). Settings has Auto Mode card (Switch testID automode-switch, pills automin-N/autosize-N). Scanner auto-executes simulated trades via POST /api/trades/execute when estimated net >= threshold; 90s per-token cooldown, max 2/cycle; AUTO badge + auto-strip banner (testIDs auto-badge, auto-strip, auto-count).

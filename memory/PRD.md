@@ -39,3 +39,7 @@ Ethereum, Polygon, BNB Chain, Arbitrum, Base, World Chain, Shape (EVM) + Solana 
   - Backend: POST /api/auth/session exchanges one-time session_id for a 7-day session_token (stored in user_sessions with TTL index); current_user accepts JWT or Google session token; Google users upserted by email into users collection.
   - Frontend: AuthContext.loginWithGoogle() (web redirect / mobile openAuthSessionAsync with deep-link listeners), session_id processing on app mount, "Continue with Google" buttons on login & register screens.
 - Opportunity screen ON-CHAIN toggle wallet-guard now matches Settings (toast + redirect to Wallet tab). Iteration 7: all backend + frontend tests pass.
+
+## Update (Aug 27, 2026 — Profile + Auto Mode)
+- Settings profile: Google account photo (with initials fallback), GOOGLE/EMAIL ACCOUNT badge, dedicated SESSION section with sign-out. Backend PublicUser now includes picture + auth_provider.
+- Auto Mode (simulated trading bot): toggle + min-net-profit threshold ($5/$10/$25/$50) + trade size ($500/$1K/$2.5K) in Settings, persisted in prefs. Scanner auto-executes simulated trades meeting the threshold (max 2 per refresh, 90s per-token cooldown), with AUTO badge, live status strip and trade counter. Never executes on-chain. Iteration 8: all backend + frontend tests pass.

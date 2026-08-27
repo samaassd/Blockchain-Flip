@@ -37,6 +37,8 @@ export type PublicUser = {
   id: string;
   email: string;
   display_name?: string;
+  picture?: string;
+  auth_provider?: string;
   balance_usd: number;
   total_pnl: number;
 };

@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { View, Text, StyleSheet, Pressable, ScrollView, Linking } from "react-native";
+import { View, Text, StyleSheet, Pressable, ScrollView, Linking, Switch } from "react-native";
+import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/src/context/AuthContext";
-import { useSettings, ExecutionMode, AutoRefresh } from "@/src/context/SettingsContext";
+import { useSettings, ExecutionMode, AutoRefresh, AutoMinNet, AutoTradeSize } from "@/src/context/SettingsContext";
 import { useWallet } from "@/src/wallet/useWallet";
 import { CHAIN_LIST } from "@/src/wallet/appkit";
 import { theme, formatUSD } from "@/src/theme";
@@ -13,8 +14,12 @@ export default function Settings() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user, logout } = useAuth();
-  const { executionMode, setExecutionMode, autoRefreshSec, setAutoRefreshSec } = useSettings();
+  const {
+    executionMode, setExecutionMode, autoRefreshSec, setAutoRefreshSec,
+    autoMode, setAutoMode, autoMinNet, setAutoMinNet, autoTradeSize, setAutoTradeSize,
+  } = useSettings();
   const { isConnected: walletConnected, state: wallet } = useWallet();
+  const isGoogle = user?.auth_provider === "google";
 
   const [showNetworks, setShowNetworks] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
@@ -56,12 +61,20 @@ export default function Settings() {
       </View>
 
       <View style={styles.profile}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>{(user?.display_name || user?.email || "?").slice(0, 1).toUpperCase()}</Text>
-        </View>
+        {user?.picture ? (
+          <Image source={{ uri: user.picture }} style={styles.avatarImg} testID="settings-avatar-photo" />
+        ) : (
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>{(user?.display_name || user?.email || "?").slice(0, 1).toUpperCase()}</Text>
+          </View>
+        )}
         <View style={{ flex: 1 }}>
           <Text style={styles.name} testID="settings-user-name">{user?.display_name}</Text>
           <Text style={styles.email} testID="settings-user-email">{user?.email}</Text>
+          <View style={styles.providerBadge} testID="settings-auth-provider">
+            <Ionicons name={isGoogle ? "logo-google" : "mail-outline"} size={10} color={theme.colors.brand} />
+            <Text style={styles.providerText}>{isGoogle ? "GOOGLE ACCOUNT" : "EMAIL ACCOUNT"}</Text>
+          </View>
         </View>
       </View>
 
@@ -145,6 +158,57 @@ export default function Settings() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>PREFERENCES</Text>
 
+        <View testID="row-automode" style={[styles.groupCard, autoMode && { borderColor: theme.colors.success }]}>
+          <View style={styles.groupHeader}>
+            <View style={styles.iconBox}><Ionicons name="hardware-chip-outline" size={18} color={theme.colors.brand} /></View>
+            <Text style={styles.rowLabel}>Auto Mode</Text>
+            <View style={{ flex: 1 }} />
+            <Switch
+              testID="automode-switch"
+              value={autoMode}
+              onValueChange={(v) => {
+                setAutoMode(v);
+                flash(v ? "Auto Mode ON — bot executes simulated trades" : "Auto Mode OFF");
+              }}
+              trackColor={{ false: theme.colors.surfaceTertiary, true: theme.colors.success }}
+              thumbColor="#fff"
+            />
+          </View>
+          <Text style={styles.modeDesc} testID="automode-desc">
+            Auto-executes SIMULATED trades from the Scanner when the estimated net profit at your trade size clears the threshold. Never signs on-chain trades.
+          </Text>
+          {autoMode && (
+            <>
+              <Text style={styles.autoLabel}>MIN NET PROFIT</Text>
+              <View style={styles.pillRow}>
+                {([5, 10, 25, 50] as AutoMinNet[]).map((n) => (
+                  <Pressable
+                    key={n}
+                    testID={`automin-${n}`}
+                    onPress={() => { setAutoMinNet(n); flash(`Auto threshold: ≥ $${n} net`); }}
+                    style={[styles.pill, autoMinNet === n && styles.pillActive]}
+                  >
+                    <Text style={[styles.pillText, autoMinNet === n && styles.pillTextActive]}>≥ ${n}</Text>
+                  </Pressable>
+                ))}
+              </View>
+              <Text style={styles.autoLabel}>TRADE SIZE</Text>
+              <View style={styles.pillRow}>
+                {([500, 1000, 2500] as AutoTradeSize[]).map((n) => (
+                  <Pressable
+                    key={n}
+                    testID={`autosize-${n}`}
+                    onPress={() => { setAutoTradeSize(n); flash(`Auto trade size: $${n.toLocaleString()}`); }}
+                    style={[styles.pill, autoTradeSize === n && styles.pillActive]}
+                  >
+                    <Text style={[styles.pillText, autoTradeSize === n && styles.pillTextActive]}>${n.toLocaleString()}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </>
+          )}
+        </View>
+
         <View testID="row-refresh" style={styles.groupCard}>
           <View style={styles.groupHeader}>
             <View style={styles.iconBox}><Ionicons name="flash-outline" size={18} color={theme.colors.brand} /></View>
@@ -216,10 +280,23 @@ export default function Settings() {
         )}
       </View>
 
-      <Pressable testID="logout-button" onPress={onLogout} style={styles.logout}>
-        <Ionicons name="log-out-outline" size={20} color={theme.colors.error} />
-        <Text style={styles.logoutText}>SIGN OUT</Text>
-      </Pressable>
+      {/* --- Session / Sign out --- */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>SESSION</Text>
+        <View style={styles.row} testID="row-session">
+          <View style={styles.iconBox}>
+            <Ionicons name={isGoogle ? "logo-google" : "person-outline"} size={18} color={theme.colors.brand} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.rowLabel}>Signed in {isGoogle ? "with Google" : "with email"}</Text>
+            <Text style={styles.sessionEmail}>{user?.email}</Text>
+          </View>
+        </View>
+        <Pressable testID="logout-button" onPress={onLogout} style={styles.logout}>
+          <Ionicons name="log-out-outline" size={20} color={theme.colors.error} />
+          <Text style={styles.logoutText}>SIGN OUT</Text>
+        </Pressable>
+      </View>
 
       {!!toast && (
         <View style={styles.toast} testID="settings-toast">
@@ -236,9 +313,12 @@ const styles = StyleSheet.create({
   title: { color: theme.colors.onSurface, fontSize: 32, fontWeight: "900", letterSpacing: -0.5 },
   profile: { flexDirection: "row", alignItems: "center", gap: theme.spacing.md, padding: theme.spacing.lg, marginHorizontal: theme.spacing.xl, backgroundColor: theme.colors.surfaceSecondary, borderRadius: theme.radius.md, borderWidth: 1, borderColor: theme.colors.border },
   avatar: { width: 56, height: 56, borderRadius: 28, backgroundColor: theme.colors.brandTertiary, alignItems: "center", justifyContent: "center" },
+  avatarImg: { width: 56, height: 56, borderRadius: 28, backgroundColor: theme.colors.brandTertiary },
   avatarText: { color: theme.colors.brand, fontSize: 24, fontWeight: "900" },
   name: { color: theme.colors.onSurface, fontSize: 17, fontWeight: "800" },
   email: { color: theme.colors.onSurfaceSecondary, fontSize: 13, marginTop: 2 },
+  providerBadge: { flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start", marginTop: 6, paddingHorizontal: 8, paddingVertical: 3, borderRadius: theme.radius.pill, backgroundColor: theme.colors.brandTertiary },
+  providerText: { color: theme.colors.brand, fontSize: 9, fontWeight: "900", letterSpacing: 0.8 },
   section: { marginTop: theme.spacing.xl, paddingHorizontal: theme.spacing.xl },
   sectionTitle: { color: theme.colors.onSurfaceSecondary, fontSize: 11, letterSpacing: 1.4, fontWeight: "800", marginBottom: theme.spacing.sm },
 
@@ -274,8 +354,10 @@ const styles = StyleSheet.create({
   linkBtn: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: theme.spacing.sm },
   linkText: { color: theme.colors.brand, fontSize: 12, fontWeight: "800" },
 
-  logout: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: theme.spacing.sm, marginTop: theme.spacing.xl, marginHorizontal: theme.spacing.xl, padding: theme.spacing.md, borderRadius: theme.radius.md, borderWidth: 1, borderColor: theme.colors.error, backgroundColor: "rgba(239,68,68,0.08)" },
+  logout: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: theme.spacing.sm, padding: theme.spacing.md, borderRadius: theme.radius.md, borderWidth: 1, borderColor: theme.colors.error, backgroundColor: "rgba(239,68,68,0.08)" },
   logoutText: { color: theme.colors.error, fontWeight: "900", letterSpacing: 1.5 },
+  sessionEmail: { color: theme.colors.onSurfaceSecondary, fontSize: 12, marginTop: 2 },
+  autoLabel: { color: theme.colors.onSurfaceSecondary, fontSize: 10, letterSpacing: 1.2, fontWeight: "800", marginTop: theme.spacing.md },
 
   toast: { position: "absolute", left: theme.spacing.xl, right: theme.spacing.xl, bottom: 24, padding: theme.spacing.md, borderRadius: theme.radius.md, backgroundColor: theme.colors.brand, flexDirection: "row", alignItems: "center", gap: 8 },
   toastText: { color: theme.colors.onBrandPrimary, fontWeight: "900", fontSize: 13, letterSpacing: 0.5 },

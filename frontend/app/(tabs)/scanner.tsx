@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   View, Text, StyleSheet, FlatList, ActivityIndicator, RefreshControl,
   Pressable, ScrollView,
@@ -7,8 +7,9 @@ import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { api, Opportunity } from "@/src/api/client";
+import { api, Opportunity, Trade } from "@/src/api/client";
 import { useSettings } from "@/src/context/SettingsContext";
+import { useAuth } from "@/src/context/AuthContext";
 import { theme, formatUSD, formatPct } from "@/src/theme";
 
 const CHAIN_FILTERS = [
@@ -49,12 +50,59 @@ export default function Scanner() {
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
   // Auto refresh honoring user preference (0 = off)
-  const { autoRefreshSec } = useSettings();
+  const { autoRefreshSec, autoMode, autoMinNet, autoTradeSize } = useSettings();
+  const { refreshUser } = useAuth();
   useEffect(() => {
     if (!autoRefreshSec) return;
     const id = setInterval(load, autoRefreshSec * 1000);
     return () => clearInterval(id);
   }, [load, autoRefreshSec]);
+
+  // --- AUTO MODE: execute simulated trades when estimated net clears the threshold ---
+  const lastExecRef = useRef<Map<string, number>>(new Map()); // token_id -> last exec ts
+  const autoBusyRef = useRef(false);
+  const [autoLog, setAutoLog] = useState<{ text: string; positive: boolean } | null>(null);
+  const [autoCount, setAutoCount] = useState(0);
+
+  useEffect(() => {
+    if (!autoMode) { setAutoLog(null); return; }
+  }, [autoMode]);
+
+  useEffect(() => {
+    if (!autoMode || autoBusyRef.current || opps.length === 0) return;
+    (async () => {
+      autoBusyRef.current = true;
+      try {
+        const COOLDOWN_MS = 90_000;
+        const now = Date.now();
+        const estNet = (o: Opportunity) =>
+          autoTradeSize * (o.spread_pct / 100) - o.estimated_gas_usd - (o.buy_dex.fee + o.sell_dex.fee) * autoTradeSize;
+        const candidates = opps
+          .filter((o) => estNet(o) >= autoMinNet && now - (lastExecRef.current.get(o.token_id) || 0) > COOLDOWN_MS)
+          .sort((a, b) => estNet(b) - estNet(a))
+          .slice(0, 2); // max 2 per refresh cycle
+        for (const o of candidates) {
+          lastExecRef.current.set(o.token_id, Date.now());
+          try {
+            const res = await api.post<Trade>("/trades/execute", { opportunity_id: o.id, amount_usd: autoTradeSize });
+            setAutoCount((c) => c + 1);
+            setAutoLog({
+              text: `${o.token_symbol} • ${res.net_profit >= 0 ? "+" : ""}${formatUSD(res.net_profit)} net`,
+              positive: res.net_profit >= 0,
+            });
+            refreshUser().catch(() => {});
+          } catch (e: any) {
+            if (e?.status === 400) { // insufficient balance — stop trying this cycle
+              setAutoLog({ text: "Paused — insufficient balance", positive: false });
+              break;
+            }
+          }
+        }
+      } finally {
+        autoBusyRef.current = false;
+      }
+    })();
+  }, [opps, autoMode, autoMinNet, autoTradeSize, refreshUser]);
 
   const onRefresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
 
@@ -66,11 +114,35 @@ export default function Scanner() {
             <Text style={styles.title}>Scanner</Text>
             <Text style={styles.subtitle}>{opps.length} opportunities across DEXs</Text>
           </View>
-          <View style={styles.liveBadge}>
-            <View style={styles.liveDot} />
-            <Text style={styles.liveText}>LIVE</Text>
+          <View style={{ flexDirection: "row", gap: 6 }}>
+            {autoMode && (
+              <View style={[styles.liveBadge, { backgroundColor: "rgba(34,197,94,0.15)" }]} testID="auto-badge">
+                <View style={[styles.liveDot, { backgroundColor: theme.colors.success }]} />
+                <Text style={[styles.liveText, { color: theme.colors.success }]}>AUTO</Text>
+              </View>
+            )}
+            <View style={styles.liveBadge}>
+              <View style={styles.liveDot} />
+              <Text style={styles.liveText}>LIVE</Text>
+            </View>
           </View>
         </View>
+
+        {autoMode && (
+          <View style={styles.autoStrip} testID="auto-strip">
+            <Ionicons name="hardware-chip" size={14} color={theme.colors.success} />
+            <Text style={styles.autoStripText} numberOfLines={1}>
+              {autoLog
+                ? `Auto trade: ${autoLog.text}`
+                : `Watching for ≥ $${autoMinNet} net @ $${autoTradeSize.toLocaleString()}`}
+            </Text>
+            {autoCount > 0 && (
+              <View style={styles.autoCountBadge} testID="auto-count">
+                <Text style={styles.autoCountText}>{autoCount}</Text>
+              </View>
+            )}
+          </View>
+        )}
 
         <ScrollView
           horizontal
@@ -199,6 +271,10 @@ const styles = StyleSheet.create({
   liveBadge: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingVertical: 5, borderRadius: theme.radius.pill, backgroundColor: theme.colors.brandTertiary },
   liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: theme.colors.brand },
   liveText: { color: theme.colors.brand, fontSize: 10, fontWeight: "900", letterSpacing: 1 },
+  autoStrip: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: theme.spacing.md, paddingHorizontal: theme.spacing.md, paddingVertical: 8, borderRadius: theme.radius.md, backgroundColor: "rgba(34,197,94,0.08)", borderWidth: 1, borderColor: "rgba(34,197,94,0.35)" },
+  autoStripText: { color: theme.colors.success, fontSize: 12, fontWeight: "800", flex: 1 },
+  autoCountBadge: { minWidth: 22, height: 22, borderRadius: 11, backgroundColor: theme.colors.success, alignItems: "center", justifyContent: "center", paddingHorizontal: 6 },
+  autoCountText: { color: "#fff", fontSize: 11, fontWeight: "900" },
   chipsRow: { gap: theme.spacing.sm, paddingRight: theme.spacing.xl, alignItems: "center" },
   chip: { height: 36, flexShrink: 0, paddingHorizontal: 14, borderRadius: theme.radius.pill, backgroundColor: theme.colors.surfaceSecondary, borderWidth: 1, borderColor: theme.colors.border, alignItems: "center", justifyContent: "center" },
   chipActive: { backgroundColor: theme.colors.brandTertiary, borderColor: theme.colors.brand },

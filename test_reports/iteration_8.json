@@ -1,0 +1,42 @@
+{
+  "summary": "Iteration 8 review — ALL 8 checkpoints PASS. Backend (7/7 pytest iter_8): (a) GET /api/auth/me now returns picture=null + auth_provider='email' for email users (was missing before); (b) POST /api/auth/register response.user includes the same two new fields; (c) POST /api/trades/execute regression fully green — SIMULATED trade returns TradeOut with mode=SIMULATED, balance shifts by EXACTLY the returned net_profit (asserted with GET /auth/me before+after), rejects amount>balance (400 'Insufficient…'), rejects unknown opportunity (404); (d) /auth/me + /trades/execute still 401 without Bearer. Frontend (mobile viewport 390x844, demo@arbscout.io/demo1234): (1) Settings profile card renders name='Demo Trader', email='demo@arbscout.io', initials-avatar (no user.picture — settings-avatar-photo NOT rendered, correct), and settings-auth-provider badge shows 'EMAIL ACCOUNT' with mail-outline icon. (2) SESSION section row-session text is 'Signed in with email' + demo@arbscout.io; logout-button visible inside it. (3) Sign-out returns to /login screen. (4) Auto Mode card row-automode: automode-switch toggles ON, toast 'Auto Mode ON — bot executes simulated trades' flashes; threshold pills automin-5/10/25/50 AND trade-size pills autosize-500/1000/2500 all render. Selections flash toasts ('Auto threshold: ≥ $5 net', 'Auto trade size: $2,500') and persist across tab navigation (nav to Scanner and back — automode still ON, automin-5/autosize-2500 pills still visible). (5) Scanner with Auto Mode ON: auto-badge (green AUTO pill) and auto-strip render in header. (6) Auto-execution with $5 threshold @ $2,500 size fired immediately — auto-count badge showed '4' within 1s, strip cycled through 'Auto trade: CRV • +$43.47 net' → 'LINK • +$41.87 net'. (7) History tab shows 4 SIMULATED trades (LINK/AAVE/CRV/OP, all @ $2.5K, all positive net), Total P&L $169.85, Win Rate 100%. (8) Dashboard/Settings balance reflects auto trades — Simulated Balance updated to $10.09K (=10000+169.85). No React Native red screen; only pre-existing 'props.pointerEvents is deprecated' AppKit warning (already tracked from iter_4/5/6/7) and one LI.FI /bridge/quote 400 (iter_6 known, unrelated). Google avatar path was NOT exercised (OAuth not completable in automation, per note) — the picture-vs-initials branch is verified only on email side, and the isGoogle icon toggle in row-session was inspected via code review.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_8.json",
+    "/app/test_reports/pytest/iter8.xml",
+    "/app/backend/tests/test_iteration8_automode.py"
+  ],
+  "action_items": [
+    "None blocking. Optional (still carried from iter_5): silence 'props.pointerEvents is deprecated' from the AppKit web modal adapter."
+  ],
+  "critical_code_review_comments": [
+    "backend/server.py:96-102,144-153 PublicUser model + user_public() now return picture (Optional[str]) and auth_provider (default 'email'). Google users get their picture URL + auth_provider='google' via /auth/session upsert (lines 236-248). Existing email-only user documents (created before iter_8) simply return picture=None + auth_provider='email' because .get() defaults are correct — no migration needed.",
+    "frontend/src/context/SettingsContext.tsx — Auto Mode prefs (autoMode/autoMinNet/autoTradeSize) are persisted to storage under key 'arbscout_prefs' together with existing prefs. DEFAULTS include autoRefreshSec=20, so freshly opened Scanner will refresh on 20s cadence as documented. save() spreads current prefs+patch so no field is dropped when toggling autoMode alone.",
+    "frontend/app/(tabs)/scanner.tsx:71-105 Auto-execute effect gates on autoMode + autoBusyRef + opps.length; computes estNet = size*(spread/100) - gas - (buyFee+sellFee)*size exactly as spec'd; sorts candidates desc by estNet and slices top 2 (max 2 per refresh cycle); tracks last exec per token_id in a Map with 90s COOLDOWN_MS. On 400 (insufficient balance) it breaks out early and shows 'Paused — insufficient balance' — good safety.",
+    "frontend/app/(tabs)/scanner.tsx:62 lastExecRef is a useRef Map — survives re-renders. autoBusyRef prevents double-fire when opps update mid-flight. refreshUser() is called (fire-and-forget) so dashboard balance updates after each auto trade — verified via UI (Balance moved from $10K → $10.09K).",
+    "frontend/app/(tabs)/settings.tsx:64-70 profile card correctly renders <Image source={{uri:user.picture}} /> only when user.picture is truthy; otherwise falls back to initials view with (display_name||email).slice(0,1). isGoogle switches ionicon + badge text; both branches wrapped in Text — no raw strings.",
+    "frontend/app/(tabs)/settings.tsx:283-299 SESSION section: row-session shows contextual label based on auth_provider, and logout-button lives INSIDE the SESSION section as spec'd (not floating). onLogout awaits auth logout THEN router.replace('/(auth)/login') — safe order.",
+    "Backend note: /api/trades/execute mode field is hardcoded 'SIMULATED' (server.py:481); auto-executed trades from Scanner therefore always land as SIMULATED in trades collection regardless of executionMode setting — matches the spec ('Never signs on-chain trades')."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration8_automode.py"
+  ],
+  "success_rate": {
+    "backend": "100% (7/7 iter_8 tests pass)",
+    "frontend": "100% (all 8 review checkpoints pass)"
+  },
+  "seed_data_creation": "Registered ephemeral users TEST_{uuid}@arbscout.io / test1234 for pytest fixtures. Reused existing demo@arbscout.io / demo1234 for UI run (auto-executed 4 SIMULATED trades on the demo account — balance shifted 10000 → 10169.85).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iter_8 (Auto Mode + profile picture/provider on /auth/me) is complete and verified. Key testIDs to know: settings-auth-provider, settings-avatar-photo (only when user.picture set), settings-user-name, settings-user-email, row-session (contains 'Signed in with google|email' + email), logout-button (inside SESSION), row-automode, automode-switch, automode-desc, automin-{5,10,25,50}, autosize-{500,1000,2500}, auto-badge, auto-strip, auto-count (Scanner header). Auto-execute policy (scanner.tsx:71-105): estNet = size*(spread/100) - gas - (buyFee+sellFee)*size, max 2 trades per refresh cycle, 90s cooldown per token_id, halts on 400 (insufficient balance). Auto trades only fire while Scanner is mounted; default autoRefreshSec=20. To reliably trigger auto trades in testing use threshold=$5 @ size=$2,500 — every top-of-list opportunity typically clears $30-50 net. Persistence key = 'arbscout_prefs' via /src/utils/storage. Google avatar branch cannot be automated end-to-end (OAuth blocked); code review confirmed the Image fallback in settings.tsx:64-70 is correct. Backend /auth/me/register now return picture (nullable) + auth_provider ('email'|'google') — pre-iter_8 user docs still return null/'email' via .get() defaults, no migration required.",
+  "rca_of_issue": "N/A — feature-addition testing, no bugs found."
+}
