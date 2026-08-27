@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  View, Text, StyleSheet, FlatList, ActivityIndicator, RefreshControl, Pressable,
+  View, Text, StyleSheet, FlatList, ActivityIndicator, RefreshControl, Pressable, Linking,
 } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
@@ -97,8 +97,15 @@ export default function History() {
           }
           renderItem={({ item }) => {
             const win = item.net_profit > 0;
+            const explorer = item.explorer_url || (item.tx_hash && item.chain_id ? explorerFor(item.chain_id, item.tx_hash) : "");
+            const onOpen = () => { if (explorer) Linking.openURL(explorer).catch(() => {}); };
+            const RowWrap: any = explorer ? Pressable : View;
             return (
-              <View style={styles.row} testID={`trade-row-${item.id}`}>
+              <RowWrap
+                testID={`trade-row-${item.id}`}
+                onPress={explorer ? onOpen : undefined}
+                style={styles.row}
+              >
                 <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.md, flex: 1 }}>
                   {item.token_image ? (
                     <Image source={{ uri: item.token_image }} style={styles.icon} />
@@ -108,7 +115,12 @@ export default function History() {
                     </View>
                   )}
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.pair}>{item.pair}</Text>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                      <Text style={styles.pair}>{item.pair}</Text>
+                      {item.mode === "ONCHAIN" && (
+                        <View style={styles.chainBadge}><Text style={styles.chainBadgeText}>ON-CHAIN</Text></View>
+                      )}
+                    </View>
                     <Text style={styles.route}>{item.buy_dex} → {item.sell_dex}</Text>
                     <Text style={styles.date}>{new Date(item.executed_at).toLocaleString()}</Text>
                   </View>
@@ -117,14 +129,35 @@ export default function History() {
                   <Text style={[styles.pnl, { color: win ? theme.colors.success : theme.colors.error }]}>{formatUSD(item.net_profit)}</Text>
                   <Text style={styles.spread}>{formatPct(item.spread_pct)}</Text>
                   <Text style={styles.amount}>on {formatUSD(item.amount_usd)}</Text>
+                  {explorer ? (
+                    <View style={styles.explorerHint} testID={`explorer-${item.id}`}>
+                      <Ionicons name="open-outline" size={11} color={theme.colors.brand} />
+                      <Text style={styles.explorerHintText}>VIEW TX</Text>
+                    </View>
+                  ) : null}
                 </View>
-              </View>
+              </RowWrap>
             );
           }}
         />
       )}
     </View>
   );
+}
+
+// Explorer URL helper — supports EVM chains + Solana
+function explorerFor(chainId: number, txHash: string): string {
+  const map: Record<number, string> = {
+    1: "https://etherscan.io/tx/",
+    137: "https://polygonscan.com/tx/",
+    56: "https://bscscan.com/tx/",
+    42161: "https://arbiscan.io/tx/",
+    8453: "https://basescan.org/tx/",
+    480: "https://worldscan.org/tx/",
+    360: "https://shapescan.xyz/tx/",
+    101: "https://solscan.io/tx/",
+  };
+  return `${map[chainId] || "https://etherscan.io/tx/"}${txHash}`;
 }
 
 const styles = StyleSheet.create({
@@ -150,4 +183,8 @@ const styles = StyleSheet.create({
   amount: { color: theme.colors.onSurfaceSecondary, fontSize: 10, marginTop: 2 },
   empty: { padding: theme.spacing.xxxl, alignItems: "center", gap: theme.spacing.md },
   emptyText: { color: theme.colors.onSurfaceSecondary, fontSize: 14 },
+  chainBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: theme.radius.pill, backgroundColor: theme.colors.brandTertiary, borderWidth: 1, borderColor: theme.colors.brand },
+  chainBadgeText: { color: theme.colors.brand, fontSize: 9, fontWeight: "900", letterSpacing: 0.5 },
+  explorerHint: { flexDirection: "row", alignItems: "center", gap: 3, marginTop: 4 },
+  explorerHintText: { color: theme.colors.brand, fontSize: 9, fontWeight: "900", letterSpacing: 0.5 },
 });

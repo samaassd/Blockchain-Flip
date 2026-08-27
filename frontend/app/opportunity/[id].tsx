@@ -69,6 +69,31 @@ export default function OpportunityDetail() {
   const chain = CHAIN_LIST.find((c) => c.chainId === Number(chainId));
   const tokenOnChain = opp ? tokenAddressFor(opp.token_id, Number(chainId)) : null;
 
+  // --- Bridge preview (LI.FI) ---
+  const [bridge, setBridge] = useState<any | null>(null);
+  const [bridgeErr, setBridgeErr] = useState("");
+  const [bridgeLoading, setBridgeLoading] = useState(false);
+  useEffect(() => {
+    (async () => {
+      if (!opp?.is_cross_chain || !opp.buy_chain_id || !opp.sell_chain_id) return;
+      const NATIVE = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE";
+      const from = walletState?.address || "0x1234567890123456789012345678901234567890";
+      const wei = BigInt(Math.max(1, Math.floor(amt)) * 1e15).toString(); // small notional so LI.FI returns fast
+      setBridgeLoading(true); setBridgeErr(""); setBridge(null);
+      try {
+        const q = new URLSearchParams({
+          fromChain: String(opp.buy_chain_id), toChain: String(opp.sell_chain_id),
+          fromToken: NATIVE, toToken: NATIVE,
+          fromAmount: wei, fromAddress: from,
+        });
+        const r = await api.get(`/bridge/quote?${q.toString()}`);
+        setBridge(r);
+      } catch (e: any) {
+        setBridgeErr(e?.message || "Bridge quote unavailable");
+      } finally { setBridgeLoading(false); }
+    })();
+  }, [opp?.id, opp?.is_cross_chain, opp?.buy_chain_id, opp?.sell_chain_id, walletState?.address, amt]);
+
   const executeSimulated = async () => {
     if (!opp || amt <= 0) { setToast({ type: "error", text: "Enter a valid amount" }); return; }
     setExecuting(true);
@@ -233,6 +258,46 @@ export default function OpportunityDetail() {
           </View>
         ))}
 
+        {/* Bridge preview card */}
+        {opp.is_cross_chain && (
+          <View style={styles.bridgeCard} testID="bridge-preview-card">
+            <View style={styles.bridgeHeader}>
+              <View style={styles.bridgeIconChip}><Ionicons name="swap-horizontal" size={14} color={theme.colors.brand} /></View>
+              <Text style={styles.bridgeTitle}>BRIDGE PREVIEW</Text>
+              <View style={{ flex: 1 }} />
+              {bridgeLoading && <ActivityIndicator size="small" color={theme.colors.brand} />}
+            </View>
+            {bridgeErr ? (
+              <Text style={styles.bridgeMuted} testID="bridge-error">{bridgeErr}</Text>
+            ) : bridge ? (
+              <>
+                <View style={styles.bridgeRow}>
+                  <Text style={styles.bridgeLabel}>Bridge tool</Text>
+                  <Text style={styles.bridgeVal} testID="bridge-tool">{bridge.bridge_name || bridge.tool || "—"}</Text>
+                </View>
+                <View style={styles.bridgeRow}>
+                  <Text style={styles.bridgeLabel}>You send (est.)</Text>
+                  <Text style={styles.bridgeVal}>{bridge.from_amount_usd ? `$${Number(bridge.from_amount_usd).toFixed(2)}` : "—"}</Text>
+                </View>
+                <View style={styles.bridgeRow}>
+                  <Text style={styles.bridgeLabel}>You receive (est.)</Text>
+                  <Text style={[styles.bridgeVal, { color: theme.colors.success }]}>{bridge.to_amount_usd ? `$${Number(bridge.to_amount_usd).toFixed(2)}` : "—"}</Text>
+                </View>
+                <View style={styles.bridgeRow}>
+                  <Text style={styles.bridgeLabel}>Bridge gas</Text>
+                  <Text style={[styles.bridgeVal, { color: theme.colors.warning }]}>{bridge.gas_cost_usd ? `~ $${Number(bridge.gas_cost_usd).toFixed(2)}` : "—"}</Text>
+                </View>
+                <View style={styles.bridgeRow}>
+                  <Text style={styles.bridgeLabel}>ETA</Text>
+                  <Text style={styles.bridgeVal}>{bridge.execution_seconds ? `${Math.round(Number(bridge.execution_seconds))}s` : "—"}</Text>
+                </View>
+              </>
+            ) : bridgeLoading ? null : (
+              <Text style={styles.bridgeMuted}>Loading bridge quote…</Text>
+            )}
+          </View>
+        )}
+
         {/* Amount input */}
         <Text style={[styles.sectionTitle, { marginTop: theme.spacing.xl }]}>TRADE AMOUNT (USD)</Text>
         <View style={styles.amountBox}>
@@ -383,4 +448,12 @@ const styles = StyleSheet.create({
   toastText: { color: "#fff", fontWeight: "800", fontSize: 13, flex: 1 },
   crossChainBanner: { flexDirection: "row", alignItems: "center", gap: 8, padding: theme.spacing.md, marginBottom: theme.spacing.sm, borderRadius: theme.radius.md, backgroundColor: theme.colors.brandTertiary, borderWidth: 1, borderColor: theme.colors.brand },
   crossChainText: { color: theme.colors.brand, fontSize: 12, fontWeight: "800", flex: 1 },
+  bridgeCard: { marginTop: theme.spacing.md, backgroundColor: theme.colors.surfaceSecondary, borderRadius: theme.radius.md, borderWidth: 1, borderColor: theme.colors.border, padding: theme.spacing.md },
+  bridgeHeader: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: theme.spacing.sm },
+  bridgeIconChip: { width: 26, height: 26, borderRadius: theme.radius.sm, backgroundColor: theme.colors.brandTertiary, alignItems: "center", justifyContent: "center" },
+  bridgeTitle: { color: theme.colors.onSurface, fontWeight: "900", fontSize: 12, letterSpacing: 1.2 },
+  bridgeRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 6 },
+  bridgeLabel: { color: theme.colors.onSurfaceSecondary, fontSize: 12, fontWeight: "700" },
+  bridgeVal: { color: theme.colors.onSurface, fontSize: 13, fontWeight: "800" },
+  bridgeMuted: { color: theme.colors.onSurfaceSecondary, fontSize: 12, marginTop: 4 },
 });

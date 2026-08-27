@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { View, Text, StyleSheet, Pressable, ScrollView, Platform, ActivityIndicator, RefreshControl, Linking } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -7,6 +7,10 @@ import { CHAIN_LIST, REOWN_PROJECT_ID } from "@/src/wallet/appkit";
 import { explorerTx } from "@/src/wallet/contracts";
 import { useWallet } from "@/src/wallet/useWallet";
 import { hasInjectedWallet, detectInjectedName } from "@/src/wallet/injected";
+import {
+  PhantomSession, getStoredPhantomSession, clearPhantomSession,
+  openPhantomConnect, isPhantomInjected, connectPhantomInjected,
+} from "@/src/wallet/phantom";
 
 export default function Wallet() {
   const insets = useSafeAreaInsets();
@@ -15,6 +19,32 @@ export default function Wallet() {
     connect, disconnect, switchChain, refresh,
   } = useWallet();
   const [refreshing, setRefreshing] = useState(false);
+
+  // Solana / Phantom session
+  const [sol, setSol] = useState<PhantomSession | null>(null);
+  const [solConnecting, setSolConnecting] = useState(false);
+  const [solError, setSolError] = useState("");
+  useEffect(() => { (async () => setSol(await getStoredPhantomSession()))(); }, []);
+
+  const onSolConnect = async () => {
+    setSolError(""); setSolConnecting(true);
+    try {
+      if (Platform.OS === "web" && isPhantomInjected()) {
+        const s = await connectPhantomInjected();
+        setSol(s);
+      } else {
+        await openPhantomConnect();
+        setSolError("Phantom opened — approve, then paste the callback URL below if not auto-detected");
+      }
+    } catch (e: any) {
+      setSolError(e?.message || "Phantom connect failed");
+    } finally { setSolConnecting(false); }
+  };
+
+  const onSolDisconnect = async () => {
+    await clearPhantomSession();
+    setSol(null);
+  };
 
   const onRefresh = async () => { setRefreshing(true); await refresh(); setRefreshing(false); };
   const openAddress = () => {
@@ -168,6 +198,74 @@ export default function Wallet() {
           </View>
         </>
       )}
+
+      {/* --- Solana / Phantom --- */}
+      <View style={styles.section} testID="solana-section">
+        <Text style={styles.sectionTitle}>SOLANA</Text>
+        <View style={styles.card}>
+          <View style={styles.rowBetween}>
+            <View>
+              <Text style={styles.label}>PHANTOM WALLET</Text>
+              <Text style={styles.walletName}>{sol ? "Connected" : "Not connected"}</Text>
+            </View>
+            {sol && (
+              <View style={[styles.statusDotWrap, { backgroundColor: "rgba(153,69,255,0.15)" }]}>
+                <View style={[styles.statusDot, { backgroundColor: "#9945FF" }]} />
+                <Text style={[styles.statusText, { color: "#B084FF" }]}>PHANTOM</Text>
+              </View>
+            )}
+          </View>
+          <View style={styles.divider} />
+          {sol ? (
+            <>
+              <View style={styles.addressRow}>
+                <View style={styles.iconChip}><Ionicons name="finger-print" size={14} color="#9945FF" /></View>
+                <Text style={styles.address} testID="phantom-address">
+                  {sol.publicKey.slice(0, 6)}…{sol.publicKey.slice(-4)}
+                </Text>
+                <View style={{ flex: 1 }} />
+                <Pressable
+                  testID="phantom-explorer"
+                  onPress={() => Linking.openURL(`https://solscan.io/account/${sol.publicKey}`).catch(() => {})}
+                >
+                  <Ionicons name="open-outline" size={16} color={theme.colors.onSurfaceSecondary} />
+                </Pressable>
+              </View>
+              <Pressable
+                testID="phantom-disconnect"
+                onPress={onSolDisconnect}
+                style={[styles.actionRow, { borderColor: theme.colors.error, marginTop: theme.spacing.sm }]}
+              >
+                <View style={[styles.iconChip, { backgroundColor: "rgba(239,68,68,0.12)" }]}>
+                  <Ionicons name="log-out" size={14} color={theme.colors.error} />
+                </View>
+                <Text style={[styles.actionLabel, { color: theme.colors.error }]}>Disconnect Phantom</Text>
+                <Ionicons name="chevron-forward" size={16} color={theme.colors.error} />
+              </Pressable>
+            </>
+          ) : (
+            <>
+              <Text style={styles.emptyBody}>
+                Sign real Solana swaps via Jupiter using the Phantom wallet. Works on native builds; web preview opens the Phantom web page.
+              </Text>
+              <Pressable
+                testID="phantom-connect"
+                onPress={onSolConnect}
+                disabled={solConnecting}
+                style={({ pressed }) => [styles.cta, { backgroundColor: "#9945FF", marginTop: theme.spacing.md }, (pressed || solConnecting) && { opacity: 0.75 }]}
+              >
+                {solConnecting ? <ActivityIndicator color="#fff" /> : (
+                  <>
+                    <Ionicons name="planet" size={16} color="#fff" />
+                    <Text style={[styles.ctaText, { color: "#fff" }]}>CONNECT PHANTOM</Text>
+                  </>
+                )}
+              </Pressable>
+              {!!solError && <Text style={[styles.err, { textAlign: "left" }]} testID="phantom-error">{solError}</Text>}
+            </>
+          )}
+        </View>
+      </View>
     </ScrollView>
   );
 }

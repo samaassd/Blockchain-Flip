@@ -1,0 +1,42 @@
+{
+  "summary": "Iteration 6 focused test — all 3 new features PASS + all listed regressions PASS. (1) Wallet SOLANA section: solana-section renders alongside the disconnected EVM 'No wallet connected' card; purple CONNECT PHANTOM (phantom-connect) is present. Tapping phantom-connect without a Phantom browser extension gracefully surfaces phantom-error with informative text 'Phantom opened — approve, then paste the callback URL below if not auto-detected' (contains 'phantom', 'callback', 'paste'); no crash, no red screen, EVM connect-wallet-button still works. (2) Bridge Preview Card: on a real cross-chain opportunity (UNI Base→BNB), /api/bridge/quote returns 200 and the card renders with bridge-tool='Squid', You send $2494.63, You receive $2487.90, Bridge gas ~$0.04, ETA 50s. The cross-chain-banner and 3-step route (Buy UNI @ Aerodrome/Base → Bridge UNI to BNB Chain via LI.FI → Sell UNI @ PancakeSwap/BNB Chain) still render as before. (3) Trade Explorer Links: seeded one ONCHAIN trade (chain_id=137, tx_hash=0xabc00…001) and one SIMULATED trade via /api/trades. History screen shows the ONCHAIN row with an 'ON-CHAIN' badge + 'VIEW TX' hint (testID=explorer-{trade_id} present) and the SIMULATED row without any explorer hint. Clicking the ONCHAIN row invokes Linking.openURL → verified via window.open interception: URL opened = https://polygonscan.com/tx/0xabc0000000000000000000000000000000000000000000000000000000000001 (correct explorerFor(137) mapping). Backend regression: pytest 5/5 PASS for /api/scanner/opportunities, /api/scanner/opportunity/{id}, /api/bridge/quote (200 with bridge fields), /api/trades/execute (SIMULATED), /api/trades/onchain (ONCHAIN row persists in /api/trades/history with mode=ONCHAIN + chain_id=137). No React Native red screen; no new deprecated-package usage; only pre-existing 'props.pointerEvents is deprecated' warning from AppKit modal (already tracked from iter_4/5). No 'Reown Wallet chainId 0' regression observed.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_6.json",
+    "/app/test_reports/pytest/iter6.xml",
+    "/app/backend/tests/test_iteration6_smoke.py"
+  ],
+  "action_items": [
+    "None blocking. Optional cosmetic follow-ups previously flagged (iter_5): (a) mirror the wallet-guard from settings.tsx onSetMode() into opportunity/[id].tsx mode-onchain Pressable so ONCHAIN is never committed globally without a connected wallet; (b) silence pre-existing 'props.pointerEvents is deprecated' AppKit modal warning."
+  ],
+  "critical_code_review_comments": [
+    "phantom.ts:60-74 — buildConnectUrl() correctly encodes dapp X25519 pubkey (base58), cluster=mainnet-beta, app_url, redirect_link; ephemeral keypair is persisted + reused via storage. Solid.",
+    "phantom.ts:80-107 — ingestPhantomResponse() decrypts with nacl.box.open.after using shared secret from phantom_encryption_public_key + dapp secret; validates errorCode; stores full session — correct implementation.",
+    "phantom.ts:113-135 — buildSignAndSendUrl() nonces via nacl.randomBytes(24); payload includes session token — matches Phantom spec.",
+    "wallet.tsx:29-42 — onSolConnect() picks injected provider on web when isPhantomInjected(), falls back to openPhantomConnect() deep-link otherwise; sets an informational error message that includes 'Phantom', 'callback' and 'paste' keywords per the review spec.",
+    "opportunity/[id].tsx:76-95 — bridge-quote fetch guards on is_cross_chain and both chain ids, uses tiny 1e15-wei notional to keep LI.FI response fast, catches errors into bridgeErr for the bridge-error UI path. Effect dependencies include amt so quote refreshes with user typing.",
+    "history.tsx:98-140 — RowWrap toggles between Pressable (when explorer URL derivable) and View; explorerFor() correctly maps all 8 chains listed in the spec (1/137/56/42161/8453/480/360/101). explorer-{trade_id} testID and 'VIEW TX' hint only render when explorer is truthy — SIMULATED rows correctly omit it.",
+    "history.tsx:100 — explorer resolution falls back to item.tx_hash + chain_id if item.explorer_url is missing; matches spec."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration6_smoke.py"
+  ],
+  "success_rate": {
+    "backend": "100% (5/5 iteration_6 smoke tests pass)",
+    "frontend": "100% (all 8 review checkpoints pass)"
+  },
+  "seed_data_creation": "Registered ephemeral users phantom+{uuid}@arbscout.io / test1234 across the pytest run and UI runs. UI flow additionally created one ONCHAIN trade row (chain_id=137, tx_hash=0xabc0...001, explorer_url=https://polygonscan.com/tx/0xabc0...001) and one SIMULATED trade row against the first available opportunity, so the History explorer-link test could exercise both branches.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 6 (Phantom deep-link, Bridge Preview Card, History Explorer Links) is complete and verified end-to-end. Key testIDs to reuse: solana-section, phantom-connect, phantom-error, phantom-address, phantom-disconnect, phantom-explorer, connect-wallet-button, bridge-preview-card, bridge-tool, bridge-error, cross-chain-banner, trade-row-{id}, explorer-{trade_id}. login-email-input / login-password-input / login-submit-button are the correct login testIDs (NOT plain input placeholders). Backend base URL: EXPO_PUBLIC_BACKEND_URL. Only recurring warning is 'props.pointerEvents is deprecated' from AppKit web adapter — cosmetic. LI.FI /api/bridge/quote sometimes returns 400 for very small notional amounts — the frontend renders bridge-error inside bridge-preview-card in that case and this is a passing state per the review request.",
+  "rca_of_issue": "N/A — feature-addition testing, no bugs found."
+}
