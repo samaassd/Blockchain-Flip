@@ -33,3 +33,9 @@ Ethereum, Polygon, BNB Chain, Arbitrum, Base, World Chain, Shape (EVM) + Solana 
 ## Update (Aug 27, 2026)
 - Fixed "Native → native arbitrage not supported" error: native-coin opportunities (ETH, POL) now execute as native → USDC swaps via the V2 router instead of being blocked (src/wallet/swap.ts, contracts.ts).
 - Corrected ARB mapping: ARB is now treated as an ERC-20 (mainnet + Arbitrum One), not a native coin.
+
+## Update (Aug 27, 2026 — Google Sign-In + Wallet Guard)
+- Emergent-managed Google sign-in added alongside email/password auth:
+  - Backend: POST /api/auth/session exchanges one-time session_id for a 7-day session_token (stored in user_sessions with TTL index); current_user accepts JWT or Google session token; Google users upserted by email into users collection.
+  - Frontend: AuthContext.loginWithGoogle() (web redirect / mobile openAuthSessionAsync with deep-link listeners), session_id processing on app mount, "Continue with Google" buttons on login & register screens.
+- Opportunity screen ON-CHAIN toggle wallet-guard now matches Settings (toast + redirect to Wallet tab). Iteration 7: all backend + frontend tests pass.

@@ -101,3 +101,9 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+## Session Update (Aug 27, 2026)
+- Added Emergent-managed Google sign-in:
+  - Backend: POST /api/auth/session (exchanges session_id for 7-day session_token via demobackend.emergentagent.com), current_user now accepts JWT OR Google session_token, user_sessions collection with TTL index.
+  - Frontend: AuthContext.loginWithGoogle() (web: window.location redirect; mobile: WebBrowser.openAuthSessionAsync + Linking listeners), session_id processing on mount (hash/search on web, deep links on mobile), "Continue with Google" buttons on login.tsx and register.tsx.
+- Wallet guard on opportunity screen ON-CHAIN toggle now matches Settings: toast + redirect to Wallet tab when no wallet connected.
+- Existing email/password auth (demo@arbscout.io / demo1234) verified working after changes.

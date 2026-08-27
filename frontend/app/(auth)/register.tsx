@@ -10,12 +10,23 @@ import { theme } from "@/src/theme";
 
 export default function Register() {
   const router = useRouter();
-  const { register } = useAuth();
+  const { register, loginWithGoogle } = useAuth();
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [gLoading, setGLoading] = useState(false);
   const [err, setErr] = useState("");
+
+  const onGoogle = async () => {
+    setErr(""); setGLoading(true);
+    try {
+      const ok = await loginWithGoogle();
+      if (ok) router.replace("/(tabs)/dashboard");
+    } catch (e: any) {
+      setErr(e?.message || "Google sign-in failed");
+    } finally { setGLoading(false); }
+  };
 
   const onSubmit = async () => {
     if (!email || password.length < 6) { setErr("Password must be 6+ chars"); return; }
@@ -68,6 +79,26 @@ export default function Register() {
             >
               {loading ? <ActivityIndicator color={theme.colors.onBrandPrimary} /> : <Text style={styles.ctaText}>CREATE ACCOUNT</Text>}
             </Pressable>
+
+            <View style={styles.dividerRow}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>OR</Text>
+              <View style={styles.dividerLine} />
+            </View>
+
+            <Pressable
+              testID="google-signup-button" onPress={onGoogle} disabled={gLoading}
+              style={({ pressed }) => [styles.googleBtn, pressed && { opacity: 0.85 }]}
+            >
+              {gLoading ? (
+                <ActivityIndicator color={theme.colors.onSurface} />
+              ) : (
+                <>
+                  <Ionicons name="logo-google" size={18} color={theme.colors.onSurface} />
+                  <Text style={styles.googleText}>Continue with Google</Text>
+                </>
+              )}
+            </Pressable>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -87,4 +118,9 @@ const styles = StyleSheet.create({
   cta: { backgroundColor: theme.colors.brand, padding: 16, borderRadius: theme.radius.md, alignItems: "center", marginTop: theme.spacing.lg },
   ctaText: { color: theme.colors.onBrandPrimary, fontWeight: "900", letterSpacing: 1.5, fontSize: 15 },
   err: { color: theme.colors.error, marginTop: theme.spacing.sm, fontSize: 13 },
+  dividerRow: { flexDirection: "row", alignItems: "center", gap: theme.spacing.md, marginTop: theme.spacing.lg },
+  dividerLine: { flex: 1, height: 1, backgroundColor: theme.colors.border },
+  dividerText: { color: theme.colors.onSurfaceSecondary, fontSize: 11, fontWeight: "700", letterSpacing: 1.5 },
+  googleBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, backgroundColor: theme.colors.surfaceTertiary, borderWidth: 1, borderColor: theme.colors.border, padding: 15, borderRadius: theme.radius.md, marginTop: theme.spacing.lg },
+  googleText: { color: theme.colors.onSurface, fontWeight: "700", fontSize: 15 },
 });

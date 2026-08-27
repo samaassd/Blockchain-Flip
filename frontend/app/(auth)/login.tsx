@@ -11,11 +11,22 @@ import { theme } from "@/src/theme";
 
 export default function Login() {
   const router = useRouter();
-  const { login } = useAuth();
+  const { login, loginWithGoogle } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [gLoading, setGLoading] = useState(false);
   const [err, setErr] = useState("");
+
+  const onGoogle = async () => {
+    setErr(""); setGLoading(true);
+    try {
+      const ok = await loginWithGoogle();
+      if (ok) router.replace("/(tabs)/dashboard");
+    } catch (e: any) {
+      setErr(e?.message || "Google sign-in failed");
+    } finally { setGLoading(false); }
+  };
 
   const onSubmit = async () => {
     if (!email || !password) { setErr("Enter email and password"); return; }
@@ -71,6 +82,26 @@ export default function Login() {
               {loading ? <ActivityIndicator color={theme.colors.onBrandPrimary} /> : <Text style={styles.ctaText}>SIGN IN</Text>}
             </Pressable>
 
+            <View style={styles.dividerRow}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>OR</Text>
+              <View style={styles.dividerLine} />
+            </View>
+
+            <Pressable
+              testID="google-signin-button" onPress={onGoogle} disabled={gLoading}
+              style={({ pressed }) => [styles.googleBtn, pressed && { opacity: 0.85 }]}
+            >
+              {gLoading ? (
+                <ActivityIndicator color={theme.colors.onSurface} />
+              ) : (
+                <>
+                  <Ionicons name="logo-google" size={18} color={theme.colors.onSurface} />
+                  <Text style={styles.googleText}>Continue with Google</Text>
+                </>
+              )}
+            </Pressable>
+
             <Pressable testID="go-to-register" onPress={() => router.push("/(auth)/register")} style={styles.ghost}>
               <Text style={styles.ghostText}>New here? <Text style={{ color: theme.colors.brand }}>Create account</Text></Text>
             </Pressable>
@@ -99,4 +130,9 @@ const styles = StyleSheet.create({
   ghost: { marginTop: theme.spacing.md, alignItems: "center", padding: theme.spacing.sm },
   ghostText: { color: theme.colors.onSurfaceSecondary, fontSize: 14 },
   err: { color: theme.colors.error, marginTop: theme.spacing.sm, fontSize: 13 },
+  dividerRow: { flexDirection: "row", alignItems: "center", gap: theme.spacing.md, marginTop: theme.spacing.lg },
+  dividerLine: { flex: 1, height: 1, backgroundColor: theme.colors.border },
+  dividerText: { color: theme.colors.onSurfaceSecondary, fontSize: 11, fontWeight: "700", letterSpacing: 1.5 },
+  googleBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, backgroundColor: theme.colors.surfaceTertiary, borderWidth: 1, borderColor: theme.colors.border, padding: 15, borderRadius: theme.radius.md, marginTop: theme.spacing.lg },
+  googleText: { color: theme.colors.onSurface, fontWeight: "700", fontSize: 15 },
 });

@@ -85,6 +85,9 @@ class LoginIn(BaseModel):
     email: EmailStr
     password: str
 
+class SessionExchangeIn(BaseModel):
+    session_id: str
+
 class TokenOut(BaseModel):
     access_token: str
     token_type: str = "bearer"
@@ -149,17 +152,30 @@ async def current_user(creds: Annotated[Optional[HTTPAuthorizationCredentials], 
     err = HTTPException(status_code=401, detail="Invalid or expired token")
     if not creds or creds.scheme.lower() != "bearer":
         raise err
+    token = creds.credentials
+    # 1) Try our own JWT (email/password auth)
     try:
-        payload = jwt.decode(creds.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
         uid = payload.get("sub")
-        if not uid:
-            raise err
+        if uid:
+            user = await db.users.find_one({"id": uid}, {"_id": 0})
+            if user:
+                return user
     except InvalidTokenError:
-        raise err
-    user = await db.users.find_one({"id": uid}, {"_id": 0})
-    if not user:
-        raise err
-    return user
+        pass
+    # 2) Fall back to Google session token minted via /auth/session
+    sess = await db.user_sessions.find_one({"session_token": token}, {"_id": 0})
+    if sess:
+        exp = sess.get("expires_at")
+        if isinstance(exp, str):
+            exp = datetime.fromisoformat(exp)
+        if exp is not None and exp.tzinfo is None:
+            exp = exp.replace(tzinfo=timezone.utc)
+        if exp and exp > datetime.now(timezone.utc):
+            user = await db.users.find_one({"id": sess["user_id"]}, {"_id": 0})
+            if user:
+                return user
+    raise err
 
 # ---------------- Auth routes ----------------
 @api.post("/auth/register", response_model=TokenOut, status_code=201)
@@ -193,6 +209,61 @@ async def login(body: LoginIn):
 @api.get("/auth/me", response_model=PublicUser)
 async def me(user=Depends(current_user)):
     return user_public(user)
+
+@api.post("/auth/session")
+async def exchange_session(body: SessionExchangeIn):
+    """Exchange a one-time Emergent Google Auth session_id for a 7-day session_token."""
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as hc:
+            r = await hc.get(
+                "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data",
+                headers={"X-Session-ID": body.session_id},
+            )
+    except httpx.HTTPError:
+        raise HTTPException(401, "Could not verify session")
+    if r.status_code != 200:
+        raise HTTPException(401, "Invalid or expired session")
+    data = r.json()
+    email = (data.get("email") or "").strip().lower()
+    session_token = data.get("session_token")
+    if not email or not session_token:
+        raise HTTPException(401, "Invalid session data")
+
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user:
+        user = {
+            "id": str(uuid.uuid4()),
+            "email": email,
+            "display_name": data.get("name") or email.split("@")[0],
+            "picture": data.get("picture"),
+            "auth_provider": "google",
+            "balance_usd": 10000.0,
+            "total_pnl": 0.0,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        await db.users.insert_one(dict(user))
+
+    now = datetime.now(timezone.utc)
+    await db.user_sessions.update_one(
+        {"session_token": session_token},
+        {"$set": {
+            "session_token": session_token,
+            "user_id": user["id"],
+            "created_at": now,
+            "expires_at": now + timedelta(days=7),
+        }},
+        upsert=True,
+    )
+    return {"session_token": session_token, "user": user_public(user).model_dump()}
+
+@app.on_event("startup")
+async def ensure_indexes():
+    try:
+        await db.user_sessions.create_index("session_token", unique=True)
+        await db.user_sessions.create_index("user_id")
+        await db.user_sessions.create_index("expires_at", expireAfterSeconds=0)
+    except Exception as e:
+        logger.warning(f"Index creation: {e}")
 
 # ---------------- Market data ----------------
 # Cache with circuit breaker: on 429/failure, retain the last-known-good data indefinitely

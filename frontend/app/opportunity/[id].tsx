@@ -209,8 +209,8 @@ export default function OpportunityDetail() {
             testID="mode-onchain"
             onPress={() => {
               if (!walletConnected) {
-                setToast({ type: "info", text: "Connect a wallet first" });
-                connectWallet();
+                setToast({ type: "info", text: "Connect a wallet first — opening Wallet…" });
+                setTimeout(() => router.push("/(tabs)/wallet"), 600);
                 return;
               }
               setMode("onchain");

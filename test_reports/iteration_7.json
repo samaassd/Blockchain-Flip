@@ -1,0 +1,42 @@
+{
+  "summary": "Iteration 7 review — ALL 8 checkpoints PASS. Backend (11/11 pytest): (a) POST /api/auth/session returns 401 with a detail string for a random invalid session_id, and 422 for missing session_id body — endpoint contract confirmed; (b) email/password auth is unaffected — register→login→GET /auth/me full flow works, wrong password still 401, invalid Bearer still 401; (c) protected endpoints (/api/scanner/opportunities, /api/portfolio/summary, /api/market/overview, /api/trades/history) all accept Bearer JWT after the current_user() dual-path change and continue to 401 on missing/invalid tokens. Frontend: (1) Login screen renders 'Continue with Google' button (testID google-signin-button) below an OR divider; clicking it fires window.location.href=https://auth.emergentagent.com/?redirect=https%3A%2F%2Fblockchain-flip.preview.emergentagent.com%2F (intercepted via page.route before completion). (2) Register screen renders 'Continue with Google' button (testID google-signup-button) below its OR divider. (3) Email/password login flow works end-to-end — after login the app lands on /dashboard with balance $10.00K and 12 live opportunities. (4) Wallet-guard on opportunity/[id] mode-onchain: with NO wallet connected, tapping the ON-CHAIN toggle DOES NOT commit the mode (SIMULATED remains active + still visible in Trade Route step) — instead a toast 'Connect a wallet first — opening Wallet…' appears immediately and the app navigates to /wallet after ~600ms, matching Settings behavior exactly. (5) Settings mode-onchain regression is identical — toast 'Connect a wallet first — opening Wallet…', navigation to /wallet, and execution-mode-desc remains 'Trades update a virtual $10,000 balance. No real funds move.' when returning to Settings (mode NOT committed). No React Native red screen; only pre-existing 'props.pointerEvents is deprecated' AppKit web adapter warning (already tracked from iter_4/5/6). Emergent Google OAuth consent flow itself was not completed (as instructed) — only the redirect kickoff + backend endpoint contract were verified.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_7.json",
+    "/app/test_reports/pytest/iter7.xml",
+    "/app/backend/tests/test_iteration7_google_auth.py"
+  ],
+  "action_items": [
+    "None blocking. Optional (carried from iter_5): silence 'props.pointerEvents is deprecated' from the AppKit web modal adapter."
+  ],
+  "critical_code_review_comments": [
+    "backend/server.py:151-178 current_user() correctly tries JWT decode FIRST (via InvalidTokenError catch), then falls back to db.user_sessions lookup by session_token with expiry check normalized to UTC. Two-path auth is safe — JWT path short-circuits, Google path expires cleanly.",
+    "backend/server.py:213-257 /auth/session validates upstream 200 + presence of email + session_token, creates the user record if new (auth_provider='google'), and upserts a 7-day sessions doc. TTL index on expires_at (line 264) will auto-expire stale sessions. Behaves correctly for both invalid session_id (401) and missing body (422).",
+    "frontend/src/context/AuthContext.tsx:12,61-76 processedSessionIds Set + exchangeRef guards against double-exchange on remount / duplicate listener fires — solid.",
+    "frontend/src/context/AuthContext.tsx:81-105 useEffect processes session_id from URL BEFORE reading existing token, so a fresh Google return always wins over a stale JWT. Web hash/search + Linking listener both handled.",
+    "frontend/src/context/AuthContext.tsx:107-131 loginWithGoogle: web uses window.location.href (page navigates, returns via URL param); mobile registers Linking listener BEFORE openAuthSessionAsync — good Android fallback.",
+    "frontend/app/opportunity/[id].tsx:208-224 mode-onchain onPress now mirrors settings.tsx onSetMode wallet-guard exactly: toast 'Connect a wallet first — opening Wallet…' + setTimeout(router.push('/(tabs)/wallet'), 600). setMode('onchain') and setExecutionMode('ONCHAIN') both happen only AFTER the walletConnected check, so mode stays SIMULATED on failure. Matches iter_6 optional action-item (a).",
+    "frontend/app/(auth)/login.tsx:91-103 & register.tsx:89-101 — google buttons wrap Ionicons + Text in a single Pressable with correct testIDs, dividerRow uses proper spacing, disabled+ActivityIndicator on gLoading."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration7_google_auth.py"
+  ],
+  "success_rate": {
+    "backend": "100% (11/11 iteration_7 tests pass)",
+    "frontend": "100% (all 8 review checkpoints pass)"
+  },
+  "seed_data_creation": "Registered ephemeral users test+{uuid}@arbscout.io / test1234 for each UI login run and for pytest fixtures. No other seed data.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 7 (Emergent Google sign-in + wallet-guard on opportunity ON-CHAIN toggle) is complete and verified. Key testIDs: google-signin-button, google-signup-button, login-screen, register-screen, login-email-input, login-password-input, login-submit-button, register-email-input, register-password-input, register-submit-button, opportunity-detail-screen, mode-simulated, mode-onchain, toast (opp screen), settings-screen, settings-toast, execution-mode-desc, jump-to-wallet, wallet-strip. Backend session endpoint: POST /api/auth/session {session_id} → 200 {session_token,user} for valid, 401 for invalid, 422 for missing. current_user() accepts BOTH JWT and Google session_token via /api/auth/session. Google OAuth flow CANNOT be completed in automation; only verify the redirect kickoff to https://auth.emergentagent.com/?redirect=<encoded frontend URL> via page.route interception (window.location.href reassignment is not reliably intercepted by Playwright's location setter override — use route interception instead). LI.FI /api/bridge/quote may still 400 on tiny notionals — iter_6 documented; not touched here.",
+  "rca_of_issue": "N/A — feature-addition testing, no bugs found."
+}
