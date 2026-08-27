@@ -8,15 +8,13 @@ import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
-import {
-  useAppKit, useAccount, useProvider,
-} from "@reown/appkit-react-native";
 import { api, Opportunity } from "@/src/api/client";
 import { useAuth } from "@/src/context/AuthContext";
 import { theme, formatUSD, formatPct } from "@/src/theme";
 import { CHAIN_LIST, CHAINS } from "@/src/wallet/appkit";
 import { executeOnChainSwap } from "@/src/wallet/swap";
 import { tokenAddressFor } from "@/src/wallet/contracts";
+import { useWallet } from "@/src/wallet/useWallet";
 
 export default function OpportunityDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -24,24 +22,23 @@ export default function OpportunityDetail() {
   const insets = useSafeAreaInsets();
   const { user, refreshUser } = useAuth();
 
-  const appKit = useAppKit();
-  const acc = useAccount() || ({} as any);
-  const address = acc.address || "";
-  const chainId = acc.chainId || 0;
-  const isConnected = !!acc.isConnected;
-  const prov = useProvider?.() as any;
-  const wProvider = prov?.walletProvider || prov?.provider || null;
-  const openWallet = appKit?.open;
+  // Unified wallet state (cross-platform)
+  const {
+    state: walletState, isConnected: walletConnected,
+    connect: connectWallet, provider: walletProvider,
+  } = useWallet();
+  const address = walletState?.address || "";
+  const chainId = walletState?.chainId || 0;
 
   const [opp, setOpp] = useState<Opportunity | null>(null);
   const [loading, setLoading] = useState(true);
   const [amount, setAmount] = useState("1000");
   const [executing, setExecuting] = useState(false);
-  const [mode, setMode] = useState<"simulated" | "onchain">(isConnected ? "onchain" : "simulated");
+  const [mode, setMode] = useState<"simulated" | "onchain">(walletConnected ? "onchain" : "simulated");
   const [toast, setToast] = useState<{ type: "success" | "error" | "info"; text: string; link?: string } | null>(null);
   const [error, setError] = useState("");
 
-  useEffect(() => { setMode(isConnected ? "onchain" : "simulated"); }, [isConnected]);
+  useEffect(() => { setMode(walletConnected ? "onchain" : "simulated"); }, [walletConnected]);
 
   const load = useCallback(async () => {
     try {
@@ -79,7 +76,7 @@ export default function OpportunityDetail() {
 
   const executeOnChain = async () => {
     if (!opp || amt <= 0) { setToast({ type: "error", text: "Enter a valid amount" }); return; }
-    if (!isConnected || !wProvider) { setToast({ type: "error", text: "Connect wallet first" }); return; }
+    if (!walletConnected || !walletProvider) { setToast({ type: "error", text: "Connect wallet first" }); return; }
     if (!tokenOnChain) {
       setToast({ type: "error", text: `${opp.token_symbol} not deployed on ${chain?.name || "this chain"}` });
       return;
@@ -87,7 +84,7 @@ export default function OpportunityDetail() {
     setExecuting(true);
     try {
       const { hash, explorer } = await executeOnChainSwap({
-        eip1193: wProvider,
+        eip1193: walletProvider,
         userAddress: address,
         chainId: Number(chainId),
         tokenId: opp.token_id,
@@ -95,7 +92,6 @@ export default function OpportunityDetail() {
         basePriceUsd: opp.base_price,
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-      // Record it in our history
       await api.post("/trades/onchain", {
         opportunity_id: opp.id,
         amount_usd: amt,
@@ -168,14 +164,14 @@ export default function OpportunityDetail() {
 
         {mode === "onchain" && (
           <View style={styles.walletStrip} testID="wallet-strip">
-            <Ionicons name={isConnected ? "checkmark-circle" : "alert-circle"} size={16} color={isConnected ? theme.colors.success : theme.colors.warning} />
+            <Ionicons name={walletConnected ? "checkmark-circle" : "alert-circle"} size={16} color={walletConnected ? theme.colors.success : theme.colors.warning} />
             <Text style={styles.walletStripText}>
-              {isConnected
+              {walletConnected
                 ? `Connected • ${address.slice(0, 6)}…${address.slice(-4)} • ${chain?.name || "Chain " + chainId}`
                 : "Wallet not connected — sign will fail"}
             </Text>
-            <Pressable testID="strip-connect" onPress={() => (isConnected ? openWallet?.({ view: "Account" }) : openWallet?.())}>
-              <Text style={styles.walletStripAction}>{isConnected ? "MANAGE" : "CONNECT"}</Text>
+            <Pressable testID="strip-connect" onPress={connectWallet}>
+              <Text style={styles.walletStripAction}>{walletConnected ? "OK" : "CONNECT"}</Text>
             </Pressable>
           </View>
         )}

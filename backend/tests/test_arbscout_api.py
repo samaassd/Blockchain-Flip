@@ -72,7 +72,7 @@ class TestAuth:
         r = requests.get(f"{base_url}/api/auth/me", headers=auth_headers)
         assert r.status_code == 200
         d = r.json()
-        assert d["email"] == test_user["email"]
+        assert d["email"] == test_user["email"].lower()
         assert d["balance_usd"] == 10000.0
 
 

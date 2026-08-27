@@ -1,0 +1,47 @@
+{
+  "summary": "Wallet servicing bug is fixed. In web preview (no MetaMask/Rabby extension), the Wallet page correctly shows the 'No wallet connected' empty state with CONNECT WALLET button — NO bogus 'Reown Wallet' / 'chainId 0' text is rendered. Opportunity detail's on-chain mode shows 'Wallet not connected — sign will fail' and Execute surfaces a 'Connect wallet first' toast. Backend: 22/22 tests pass (100%), CoinGecko rate-limit fix confirmed — /api/scanner/opportunities returns 12 populated opportunities and /api/market/overview returns tokens with prices. One deviation from spec: tapping CONNECT WALLET when no injected wallet exists opens the Reown WalletConnect modal (a fallback in useWallet.ts:94) instead of surfacing a wallet-error text mentioning MetaMask/Rabby/Coinbase — however the UI never flips into a false-connected state, so the main bug (bogus chain 0) is resolved.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "wallet.tsx / useWallet.ts",
+        "issue": "Review spec says: 'Tapping connect-wallet-button when no injected wallet exists surfaces an error message (testID=wallet-error) mentioning MetaMask/Rabby/Coinbase'. Actual behavior: useWallet.connect() opens the Reown AppKit modal as fallback (see useWallet.ts:92-95). No 'wallet-error' Text is rendered. UI does NOT flip into a fake connected state (good), so the primary bug is fixed, but the exact 'wallet-error' contract from the spec is not met on the web preview when window.ethereum is absent. Consider: if openReown is available on web, still show a hint text under the button (e.g., 'Install MetaMask/Rabby/Coinbase, or scan the WalletConnect QR') OR only call openReown if no injected wallet AND spec accepts the modal as the error surface.",
+        "testID": "wallet-error",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_arbscout_api.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Decide whether the Reown fallback modal (opened by openReown() in useWallet.ts) satisfies the review-spec requirement of a 'wallet-error' text mentioning MetaMask/Rabby/Coinbase. If a text error is required, update useWallet.ts:83-107 to setError('...MetaMask / Rabby / Coinbase browser extension not detected...') either instead of or in addition to opening the Reown modal, so the <Text testID=\"wallet-error\"> element is rendered.",
+    "Optional: silence the noisy 'props.pointerEvents is deprecated' warning coming from AppKit modal in _layout.tsx (cosmetic)."
+  ],
+  "critical_code_review_comments": [
+    "useWallet.ts:36 correctly gates rConnected on chainId > 0 which prevents the previous 'Reown Wallet chainId 0' UI — verified.",
+    "useWallet.ts:141 (isConnected requires address AND chainId > 0) is the correct fix and empirically prevents the false-connected state.",
+    "wallet.tsx correctly guards with !isConnected before rendering the connected card — verified visually.",
+    "opportunity/[id].tsx passes walletProvider into executeOnChainSwap; toast 'Connect wallet first' is triggered when walletConnected is false — verified.",
+    "conftest.py fixture email casing: backend lowercases email but the fixture stores the original casing. Fixed test_me_returns_user assertion accordingly."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_arbscout_api.py (fixed test_me_returns_user to compare against lowercased email)"
+  ],
+  "success_rate": {
+    "backend": "100% (22/22)",
+    "frontend": "~90% (all wallet & on-chain spec items verified except the exact 'wallet-error' text on connect-fallback)"
+  },
+  "seed_data_creation": "Registered ephemeral users via /api/auth/register (TEST_<uuid>@arbscout.io) during test run — non-persistent seed only.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Wallet page empty-state and on-chain strip work correctly in the browser preview (no MetaMask). Only open discussion is whether to surface a Text-based 'wallet-error' when there is no injected wallet, versus opening the Reown modal as the primary CTA. The core bug (Reown Wallet + chainId 0 fake connected state) is resolved. Backend endpoints (auth/scanner/trades/portfolio/market) all pass.",
+  "rca_of_issue": "Original bug: previous useWallet implementation treated Reown's initial state (isConnected true-ish + chainId 0) as connected, so the Wallet page rendered 'Reown Wallet chainId 0'. Root cause: acc.isConnected in @reown/appkit-react-native can transiently be true before a real chain/session is bound. Fix (verified): useWallet.ts:36 now requires chainId > 0, useWallet.ts:141 isConnected requires both an address and a positive chainId. Reproduction: open /wallet on web preview → previously showed 'Reown Wallet chainId 0'; now shows the correct empty state. Mitigation: no additional fixes required beyond an optional UX polish (see action_items)."
+}
