@@ -8,6 +8,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api, Opportunity } from "@/src/api/client";
+import { useSettings } from "@/src/context/SettingsContext";
 import { theme, formatUSD, formatPct } from "@/src/theme";
 
 const CHAIN_FILTERS = [
@@ -15,6 +16,9 @@ const CHAIN_FILTERS = [
   { id: "Ethereum", label: "ETHEREUM" },
   { id: "BNB Chain", label: "BNB" },
   { id: "Polygon", label: "POLYGON" },
+  { id: "Base", label: "BASE" },
+  { id: "Solana", label: "SOLANA" },
+  { id: "cross", label: "CROSS-CHAIN" },
 ];
 
 export default function Scanner() {
@@ -31,9 +35,11 @@ export default function Scanner() {
     try {
       setError("");
       const q = new URLSearchParams({ min_spread: String(minSpread) });
-      if (chain !== "all") q.set("chain", chain);
+      if (chain !== "all" && chain !== "cross") q.set("chain", chain);
       const res = await api.get<{ opportunities: Opportunity[] }>(`/scanner/opportunities?${q}`);
-      setOpps(res.opportunities);
+      let list = res.opportunities;
+      if (chain === "cross") list = list.filter((o) => o.is_cross_chain);
+      setOpps(list);
     } catch (e: any) {
       setError(e?.message || "Failed to load");
     } finally { setLoading(false); }
@@ -42,11 +48,13 @@ export default function Scanner() {
   useEffect(() => { load(); }, [load]);
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  // Auto refresh every 20s
+  // Auto refresh honoring user preference (0 = off)
+  const { autoRefreshSec } = useSettings();
   useEffect(() => {
-    const id = setInterval(load, 20000);
+    if (!autoRefreshSec) return;
+    const id = setInterval(load, autoRefreshSec * 1000);
     return () => clearInterval(id);
-  }, [load]);
+  }, [load, autoRefreshSec]);
 
   const onRefresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
 
@@ -134,7 +142,15 @@ export default function Scanner() {
                     </View>
                   )}
                   <View>
-                    <Text style={styles.pair}>{item.pair}</Text>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                      <Text style={styles.pair}>{item.pair}</Text>
+                      {item.is_cross_chain && (
+                        <View style={styles.crossBadge} testID={`cross-${item.token_symbol}`}>
+                          <Ionicons name="git-network" size={10} color={theme.colors.brand} />
+                          <Text style={styles.crossBadgeText}>CROSS</Text>
+                        </View>
+                      )}
+                    </View>
                     <Text style={styles.token}>{item.token_name}</Text>
                   </View>
                 </View>
@@ -209,4 +225,6 @@ const styles = StyleSheet.create({
   emptyTitle: { color: theme.colors.onSurface, fontSize: 15, textAlign: "center" },
   refreshBtn: { paddingHorizontal: theme.spacing.xl, paddingVertical: theme.spacing.md, borderRadius: theme.radius.md, backgroundColor: theme.colors.brand, marginTop: theme.spacing.md },
   refreshText: { color: theme.colors.onBrandPrimary, fontWeight: "900", letterSpacing: 1 },
+  crossBadge: { flexDirection: "row", alignItems: "center", gap: 3, paddingHorizontal: 6, paddingVertical: 2, borderRadius: theme.radius.pill, backgroundColor: theme.colors.brandTertiary },
+  crossBadgeText: { color: theme.colors.brand, fontWeight: "900", fontSize: 9, letterSpacing: 0.5 },
 });

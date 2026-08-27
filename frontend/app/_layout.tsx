@@ -11,6 +11,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 import { useIconFonts } from "@/src/hooks/use-icon-fonts";
 import { AuthProvider } from "@/src/context/AuthContext";
+import { SettingsProvider } from "@/src/context/SettingsContext";
 import { theme } from "@/src/theme";
 import { initAppKit, AppKit, AppKitProvider } from "@/src/wallet/appkit";
 
@@ -43,10 +44,12 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: theme.colors.surface }}>
       <SafeAreaProvider>
-        <AuthProvider>
-          <StatusBar style="light" />
-          {appKit ? <AppKitProvider instance={appKit}>{inner}</AppKitProvider> : inner}
-        </AuthProvider>
+        <SettingsProvider>
+          <AuthProvider>
+            <StatusBar style="light" />
+            {appKit ? <AppKitProvider instance={appKit}>{inner}</AppKitProvider> : inner}
+          </AuthProvider>
+        </SettingsProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

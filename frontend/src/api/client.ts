@@ -49,8 +49,8 @@ export type Opportunity = {
   token_image?: string;
   pair: string;
   base_price: number;
-  buy_dex: { id: string; name: string; chain: string; fee: number };
-  sell_dex: { id: string; name: string; chain: string; fee: number };
+  buy_dex: { id: string; name: string; chain: string; chain_id: number; fee: number };
+  sell_dex: { id: string; name: string; chain: string; chain_id: number; fee: number };
   buy_price: number;
   sell_price: number;
   spread_pct: number;
@@ -58,6 +58,9 @@ export type Opportunity = {
   liquidity_usd: number;
   confidence: number;
   expires_in_sec: number;
+  is_cross_chain?: boolean;
+  buy_chain_id?: number;
+  sell_chain_id?: number;
   route?: { step: number; action: string; venue: string; chain: string; price?: number }[];
   slippage_pct?: number;
 };

@@ -1,0 +1,46 @@
+{
+  "summary": "Frontend-only validation of the Settings-screen fix (iteration 5). Registered a fresh account via /api/auth/register (200 OK) and drove the full Settings flow on mobile viewport 390x844. All 9 requested checks PASS: (1) settings-screen renders with execution-mode-card + mode-simulated/mode-onchain buttons, (2) default is SIMULATED with correct 'virtual $10,000' desc, (3) tapping mode-onchain WITHOUT wallet shows toast 'Connect a wallet first — opening Wallet…' via testID=settings-toast AND navigates to wallet-screen, and the execution mode is NOT flipped (desc still 'virtual $10,000' on return), (4) refresh-10/20/45/0 chips all update hint-refresh to '10s'/'20s'/'45s'/'OFF' and fire toast confirmation, (5) row-networks expands networks-list containing 7 net-{chainId} entries and collapses on second tap, (6) row-about expands about-panel with about-link and collapses again, (7) refresh preference persists across full page reload (verified 45s → reload → 45s), (8) opportunity detail's mode-onchain updates global Settings and mode-simulated flips it back, (9) regression PASS: wallet page shows 'No wallet connected', scanner CROSS-CHAIN chip filters to 9 cross-badged opps. Backend spot-check: /api/auth/register returns access_token + user (200). No deprecated Expo packages detected in these screens. Only console noise is the pre-existing 'props.pointerEvents is deprecated' from AppKit modal (already documented in iteration_4).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Opportunity Detail -> mode-onchain toggle",
+        "issue": "On /app/frontend/app/opportunity/[id].tsx:184-186 tapping mode-onchain calls setExecutionMode('ONCHAIN') UNCONDITIONALLY — no wallet-connected guard like Settings has. This contradicts the fix-description invariant 'we NEVER commit ONCHAIN mode until the wallet is connected'. Practical impact is small (executeOnChain() still blocks the swap if wallet is missing), but the global mode DOES persist as ONCHAIN in storage, and after next login the Settings desc reads 'Connect a wallet to arm live execution — trades are blocked until then.' instead of the SIMULATED default. Recommend adding the same guard: if ONCHAIN pressed without walletConnected, show a toast + navigate to Wallet and do NOT commit the mode.",
+        "affected_testIDs": ["mode-onchain", "mode-simulated"]
+      }
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_5.json",
+    "/app/test_reports/iteration_4.json"
+  ],
+  "action_items": [
+    "OPTIONAL: mirror the wallet-guard from settings.tsx onSetMode() into opportunity/[id].tsx mode-onchain Pressable (lines 183-190) so ONCHAIN can never be committed globally without a connected wallet, matching the stated invariant.",
+    "COSMETIC: the recurring 'props.pointerEvents is deprecated' warning from AppKit is still present (already noted in iteration_4). Silence with the style.pointerEvents migration or ignore."
+  ],
+  "critical_code_review_comments": [
+    "SettingsContext.tsx:27-47 — Prefs are correctly persisted through storage.setItem(KEY, JSON.stringify(...)) and rehydrated with DEFAULTS spread guard. Ready flag is exposed but not gated on in consumers (fine, since DEFAULTS are safe).",
+    "settings.tsx:33-41 — onSetMode() correctly early-returns for ONCHAIN when !walletConnected, flashes toast, and delays router.push by 600ms so the user reads the toast before navigation. Good UX.",
+    "settings.tsx:158-169 — refresh-{10|20|45|0} chips iterate over a typed AutoRefresh tuple; testIDs match spec exactly.",
+    "opportunity/[id].tsx:184-190 — mode-onchain Pressable does setExecutionMode('ONCHAIN') without a walletConnected guard, unlike settings.tsx. See integration_issues above.",
+    "scanner.tsx:52-57 — Auto-refresh interval correctly honors autoRefreshSec from SettingsContext, including the OFF (0) case via early return. Clean useEffect cleanup on unmount.",
+    "_layout.tsx:44-53 — SettingsProvider wraps AuthProvider, so auth-independent settings are available even before login; correct ordering.",
+    "About link opens https://reown.com via Linking.openURL — not verified via UI test (would leave the app) but code is defensive with .catch(()=>{})."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "100% (register endpoint spot-check only, per review scope)",
+    "frontend": "100% (9/9 review checkpoints pass; 1 minor invariant gap flagged on opportunity detail)"
+  },
+  "seed_data_creation": "Registered 2 ephemeral users via /api/auth/register during the run (settingsfix+{uuid}@arbscout.io / test1234); non-persistent test data only.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Iteration-5 Settings fix is functionally complete: every testID in the spec (settings-screen, execution-mode-card, mode-simulated, mode-onchain, execution-mode-desc, settings-toast, refresh-{10,20,45,0}, hint-refresh, row-networks, networks-list, net-{chainId}, row-about, about-panel, about-link) is present and behaves as designed. The only remaining nit is that /app/frontend/app/opportunity/[id].tsx mode-onchain toggle bypasses the wallet-guard and commits ONCHAIN into storage even without a connected wallet — Settings screen keeps its guard, so this is only reachable from the Opportunity Detail path. Preferences persist across reload confirmed. Wallet page + Scanner CROSS-CHAIN regression clean.",
+  "rca_of_issue": "N/A — bug fix verified. Opportunity-Detail mode-onchain guard gap is a minor consistency issue, not a regression of the original 'buttons don't work' bug (which is fully fixed)."
+}

@@ -1,0 +1,52 @@
+{
+  "summary": "All 4 new features validated. Backend: 36/36 pytest tests pass (14 new for iteration 4 + 22 regression) — Solana/Jupiter proxy, LI.FI bridge quote+chains, 1inch graceful-401 handling, and on-chain PnL reconciliation all working. 1inch endpoint correctly returns {configured: true, chains_returned: []} without crashing despite 401 upstream. LI.FI /bridge/chains returns non-empty list; /bridge/quote handles zero-address gracefully. Jupiter /solana/quote returns valid outAmount. Reconcile returns 404 for missing trades, 400 for SIMULATED, and 'pending' for real ONCHAIN with unknown tx (no crash). Scanner opportunities include is_cross_chain flag with buy/sell chain_ids, and Solana DEXs (Raydium/Orca) appear across refreshes. Frontend (Expo web preview, mobile 390x844): SOLANA and CROSS-CHAIN filter chips work; CROSS badges visible on 9/12 opps; opportunity detail shows cross-chain-banner with LI.FI text and 3-step route including a Bridge step. Wallet page regression: 'No wallet connected' state renders correctly with connect-wallet-button — NO bogus 'Reown Wallet chainId 0' text.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "POST /api/solana/quote",
+        "issue": "Spec calls for POST but backend implements @api.get('/solana/quote'). Endpoint works via GET with same query params and returns valid Jupiter response. Either update the spec or change to POST — clients using POST get 405 Method Not Allowed. server.py:572."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration4_features.py",
+    "/app/backend/tests/test_arbscout_api.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Decide on solana/quote HTTP verb: spec says POST, impl is GET. Recommend keeping GET (Jupiter itself is GET) but update the review-spec doc — OR add a POST alias if clients depend on POST. See server.py:572.",
+    "Optional: silence the recurring 'props.pointerEvents is deprecated' console warning (from AppKit modal), cosmetic only."
+  ],
+  "critical_code_review_comments": [
+    "server.py:527-534 — /api/prices/oneinch correctly swallows 401 upstream and still returns {configured, chains_returned, sample}. Verified via test.",
+    "server.py:614-651 — /api/bridge/quote proxies LI.FI, extracts estimate/gas costs, and re-raises HTTPException properly. Zero-address input returns 400 gracefully (no server crash).",
+    "server.py:653-662 — /api/bridge/chains falls back to empty list on error (safe).",
+    "server.py:572-596 — Jupiter proxy handles non-200 by raising HTTPException(400) with truncated body — good UX.",
+    "server.py:670-733 — /api/trades/reconcile guards mode!='ONCHAIN' → 400, non-existent receipt → returns {status:'pending'}, parses V2 Swap topics, and updates trade doc. Web3 import inside function keeps startup fast.",
+    "server.py:254-308 — build_opportunities correctly computes is_cross_chain from chain_id inequality and adds +3 USD gas overhead. Deterministic 45s bucket keeps opps stable for trading window.",
+    "server.py:348-369 — opportunity_detail inserts Bridge step (venue='LI.FI (best route)') for cross-chain opps and Transfer step otherwise.",
+    "scanner.tsx:13-21 — CHAIN_FILTERS includes 'Solana' and 'cross' testIDs (chip-chain-Solana, chip-chain-cross). Client-side filter for cross-chain works (line 40).",
+    "opportunity/[id].tsx:200-207 — cross-chain-banner testID renders when opp.is_cross_chain. Route steps map into full 3-step display.",
+    "opportunity/[id].tsx:104-123 — polling /api/trades/reconcile every 10s (12 attempts = 2 min) after on-chain sign — matches spec.",
+    "Minor: chain_meta.py:16-25 declares chain names for 480 (World Chain) and 360 (Shape) but scanner DEXES doesn't include them; benign but consider removing or documenting."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration4_features.py (new — 14 tests covering all 4 iteration-4 features)"
+  ],
+  "success_rate": {
+    "backend": "100% (36/36 pytest)",
+    "frontend": "100% (SOLANA + CROSS chips, CROSS badges, cross-chain banner with LI.FI + 3-step route, SOLANA filter, wallet empty state — all pass)"
+  },
+  "seed_data_creation": "Registered ephemeral users via /api/auth/register (test+{uuid}@arbscout.io) during test runs — non-persistent seed only.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "All 4 iteration-4 features verified end-to-end. Only nit: server exposes /api/solana/quote as GET but review-spec described POST — functionality confirmed via GET. LI.FI free endpoints (chains) work without API key; bridge quote gracefully surfaces LI.FI upstream 400 for zero-address. 1inch key is invalid (401 upstream) but backend correctly wraps it as {chains_returned:[]}. Reconcile pipeline safe: fake trade→404, simulated trade→400, real onchain with fake hash→'pending'. Frontend cross-chain UI (banner, badges, filter) all rendered correctly on mobile viewport.",
+  "rca_of_issue": "N/A — no bug this iteration. Only a spec/impl mismatch on solana/quote HTTP verb (documented in action_items)."
+}

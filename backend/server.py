@@ -18,6 +18,11 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, EmailStr, Field
 from jwt.exceptions import InvalidTokenError
 
+from chain_meta import (
+    build_rpcs, CHAIN_NAMES, EVM_CHAINS, SOLANA_CHAIN,
+    DEX_TO_CHAIN, SWAP_EVENT_TOPIC_V2, SOLANA_MINTS,
+)
+
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
 
@@ -27,6 +32,9 @@ JWT_SECRET = os.environ["JWT_SECRET"]
 JWT_ALGORITHM = os.environ.get("JWT_ALGORITHM", "HS256")
 ACCESS_TOKEN_HOURS = int(os.environ.get("ACCESS_TOKEN_HOURS", "24"))
 COINGECKO_BASE = os.environ.get("COINGECKO_BASE", "https://api.coingecko.com/api/v3")
+ONEINCH_API_KEY = os.environ.get("ONEINCH_API_KEY", "")
+ALCHEMY_KEY = os.environ.get("ALCHEMY_KEY", "")
+RPC_MAP = build_rpcs(ALCHEMY_KEY)
 
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
@@ -40,12 +48,15 @@ logger = logging.getLogger("arbscout")
 
 # ---------------- DEX universe (public DEXs) ----------------
 DEXES = [
-    {"id": "uniswap", "name": "Uniswap", "chain": "Ethereum", "fee": 0.003},
-    {"id": "sushiswap", "name": "SushiSwap", "chain": "Ethereum", "fee": 0.003},
-    {"id": "pancakeswap", "name": "PancakeSwap", "chain": "BNB Chain", "fee": 0.0025},
-    {"id": "curve", "name": "Curve", "chain": "Ethereum", "fee": 0.0004},
-    {"id": "balancer", "name": "Balancer", "chain": "Ethereum", "fee": 0.002},
-    {"id": "quickswap", "name": "QuickSwap", "chain": "Polygon", "fee": 0.003},
+    {"id": "uniswap", "name": "Uniswap", "chain": "Ethereum", "chain_id": 1, "fee": 0.003},
+    {"id": "sushiswap", "name": "SushiSwap", "chain": "Ethereum", "chain_id": 1, "fee": 0.003},
+    {"id": "pancakeswap", "name": "PancakeSwap", "chain": "BNB Chain", "chain_id": 56, "fee": 0.0025},
+    {"id": "curve", "name": "Curve", "chain": "Ethereum", "chain_id": 1, "fee": 0.0004},
+    {"id": "balancer", "name": "Balancer", "chain": "Ethereum", "chain_id": 1, "fee": 0.002},
+    {"id": "quickswap", "name": "QuickSwap", "chain": "Polygon", "chain_id": 137, "fee": 0.003},
+    {"id": "aerodrome", "name": "Aerodrome", "chain": "Base", "chain_id": 8453, "fee": 0.0025},
+    {"id": "raydium", "name": "Raydium", "chain": "Solana", "chain_id": 101, "fee": 0.0025},
+    {"id": "orca", "name": "Orca", "chain": "Solana", "chain_id": 101, "fee": 0.003},
 ]
 
 # Tokens to scan (CoinGecko IDs)
@@ -243,7 +254,9 @@ async def fetch_market_prices() -> dict:
 def build_opportunities(prices: dict) -> list:
     """Generate arbitrage opportunities by simulating slight DEX-specific price variations
     on top of real CoinGecko market prices. Uses a deterministic seed rotated every 45s
-    so opportunities feel 'live' but stable long enough to trade."""
+    so opportunities feel 'live' but stable long enough to trade. When buy/sell DEXs are
+    on different chains, the opportunity is flagged is_cross_chain=True and a bridge step
+    is added to the route."""
     seed_bucket = int(datetime.now(timezone.utc).timestamp() // 45)
     rng = random.Random(seed_bucket)
     opps = []
@@ -254,26 +267,21 @@ def build_opportunities(prices: dict) -> list:
         base_price = float(row.get("current_price") or 0)
         if base_price <= 0:
             continue
-        # Assign each DEX a small deviation from the base price (-1.5% to +1.5%)
-        sample = rng.sample(DEXES, k=min(5, len(DEXES)))
+        sample = rng.sample(DEXES, k=min(6, len(DEXES)))
         dex_prices = []
         for d in sample:
             dev = (rng.random() - 0.5) * 0.03  # +/- 1.5%
-            dex_prices.append({
-                "dex": d,
-                "price": base_price * (1 + dev),
-            })
-        # find best buy (min) and best sell (max)
+            dex_prices.append({"dex": d, "price": base_price * (1 + dev)})
         buy = min(dex_prices, key=lambda x: x["price"])
         sell = max(dex_prices, key=lambda x: x["price"])
         if sell["price"] <= buy["price"]:
             continue
         spread_pct = (sell["price"] - buy["price"]) / buy["price"] * 100.0
-        if spread_pct < 0.15:  # ignore tiny spreads
+        if spread_pct < 0.15:
             continue
-        # estimated gas fee based on chain
         chain = buy["dex"]["chain"]
-        gas = {"Ethereum": 8.5, "BNB Chain": 0.35, "Polygon": 0.05}.get(chain, 1.0)
+        gas = {"Ethereum": 8.5, "BNB Chain": 0.35, "Polygon": 0.05, "Base": 0.10, "Arbitrum": 0.20, "Solana": 0.01}.get(chain, 1.0)
+        is_cross_chain = buy["dex"]["chain_id"] != sell["dex"]["chain_id"]
         opp_id = f"{tok['id']}-{buy['dex']['id']}-{sell['dex']['id']}-{seed_bucket}"
         opps.append({
             "id": opp_id,
@@ -288,10 +296,13 @@ def build_opportunities(prices: dict) -> list:
             "buy_price": round(buy["price"], 6),
             "sell_price": round(sell["price"], 6),
             "spread_pct": round(spread_pct, 3),
-            "estimated_gas_usd": gas,
+            "estimated_gas_usd": gas + (3.0 if is_cross_chain else 0.0),
             "liquidity_usd": rng.randint(50_000, 5_000_000),
             "confidence": round(min(0.95, 0.5 + spread_pct / 8), 2),
             "expires_in_sec": 45 - int(datetime.now(timezone.utc).timestamp() % 45),
+            "is_cross_chain": is_cross_chain,
+            "buy_chain_id": buy["dex"]["chain_id"],
+            "sell_chain_id": sell["dex"]["chain_id"],
         })
     opps.sort(key=lambda x: x["spread_pct"], reverse=True)
     return opps
@@ -340,12 +351,19 @@ async def opportunity_detail(opp_id: str, user=Depends(current_user)):
     opps = build_opportunities(prices)
     for o in opps:
         if o["id"] == opp_id:
-            # add route detail
-            o["route"] = [
+            route = [
                 {"step": 1, "action": f"Buy {o['token_symbol']}", "venue": o["buy_dex"]["name"], "chain": o["buy_dex"]["chain"], "price": o["buy_price"]},
-                {"step": 2, "action": f"Transfer / bridge {o['token_symbol']}", "venue": "On-chain", "chain": o["buy_dex"]["chain"]},
-                {"step": 3, "action": f"Sell {o['token_symbol']}", "venue": o["sell_dex"]["name"], "chain": o["sell_dex"]["chain"], "price": o["sell_price"]},
             ]
+            if o.get("is_cross_chain"):
+                route.append({
+                    "step": 2, "action": f"Bridge {o['token_symbol']} to {o['sell_dex']['chain']}",
+                    "venue": "LI.FI (best route)", "chain": f"{o['buy_dex']['chain']} → {o['sell_dex']['chain']}",
+                })
+                route.append({"step": 3, "action": f"Sell {o['token_symbol']}", "venue": o["sell_dex"]["name"], "chain": o["sell_dex"]["chain"], "price": o["sell_price"]})
+            else:
+                route.append({"step": 2, "action": f"Transfer {o['token_symbol']}", "venue": "On-chain", "chain": o["buy_dex"]["chain"]})
+                route.append({"step": 3, "action": f"Sell {o['token_symbol']}", "venue": o["sell_dex"]["name"], "chain": o["sell_dex"]["chain"], "price": o["sell_price"]})
+            o["route"] = route
             o["slippage_pct"] = 0.5
             return o
     raise HTTPException(404, "Opportunity not found or expired")
@@ -473,6 +491,247 @@ async def portfolio(user=Depends(current_user)):
 @api.get("/health")
 async def health():
     return {"status": "ok", "time": datetime.now(timezone.utc).isoformat()}
+
+
+# ---------------- 1inch spot prices (real per-DEX) ----------------
+_oneinch_cache = {"ts": 0.0, "data": {}}
+
+async def fetch_1inch_prices() -> dict:
+    """Fetch spot prices via 1inch. Returns {chain_id: {tokenAddr: usd}}.
+    Requires ONEINCH_API_KEY; caches 60s and silently falls back to empty."""
+    if not ONEINCH_API_KEY:
+        return {}
+    now = datetime.now(timezone.utc).timestamp()
+    if now - _oneinch_cache["ts"] < 60 and _oneinch_cache["data"]:
+        return _oneinch_cache["data"]
+    # 1inch price endpoint: /price/v1.1/{chainId}?currency=USD returns {addr: usd}
+    chains = [1, 137, 56, 42161, 8453]
+    out: dict = {}
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as hc:
+            for cid in chains:
+                r = await hc.get(
+                    f"https://api.1inch.dev/price/v1.1/{cid}?currency=USD",
+                    headers={"Authorization": f"Bearer {ONEINCH_API_KEY}"},
+                )
+                if r.status_code == 200:
+                    out[cid] = r.json()
+                else:
+                    logger.info(f"1inch {cid}: HTTP {r.status_code}")
+        _oneinch_cache["data"] = out
+        _oneinch_cache["ts"] = now
+    except Exception as e:
+        logger.warning(f"1inch fetch failed: {e}")
+    return out
+
+@api.get("/prices/oneinch")
+async def oneinch_status(user=Depends(current_user)):
+    data = await fetch_1inch_prices()
+    return {
+        "configured": bool(ONEINCH_API_KEY),
+        "chains_returned": list(data.keys()),
+        "sample": {k: list(v.items())[:3] for k, v in data.items()},
+    }
+
+
+# ---------------- Solana / Jupiter ----------------
+_jupiter_cache = {"ts": 0.0, "data": {}}
+
+async def fetch_solana_prices() -> dict:
+    """Return {mint: usd_price} using Jupiter Quote (SOL as reference)."""
+    now = datetime.now(timezone.utc).timestamp()
+    if now - _jupiter_cache["ts"] < 45 and _jupiter_cache["data"]:
+        return _jupiter_cache["data"]
+    prices: dict = {}
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as hc:
+            # Use Jupiter quote endpoint against USDC to derive prices
+            usdc = SOLANA_MINTS["usd-coin"]
+            for tid, mint in SOLANA_MINTS.items():
+                if mint == usdc:
+                    prices[mint] = 1.0
+                    continue
+                r = await hc.get(
+                    "https://api.jup.ag/swap/v1/quote",
+                    params={"inputMint": mint, "outputMint": usdc, "amount": "1000000000", "slippageBps": 50},
+                )
+                if r.status_code == 200:
+                    j = r.json()
+                    # amount is in the input token's smallest unit. For SOL(9 decimals) 1_000_000_000=1 SOL
+                    out = int(j.get("outAmount", "0")) / 1_000_000  # USDC 6 decimals
+                    in_dec = 9 if mint == SOLANA_MINTS["solana"] else 6
+                    in_amt = 1_000_000_000 / (10 ** in_dec)
+                    if in_amt > 0:
+                        prices[mint] = out / in_amt
+        _jupiter_cache["data"] = prices
+        _jupiter_cache["ts"] = now
+    except Exception as e:
+        logger.warning(f"Jupiter price fetch failed: {e}")
+    return prices
+
+@api.get("/solana/quote")
+async def solana_quote(
+    input_mint: str = Query(..., alias="inputMint"),
+    output_mint: str = Query(..., alias="outputMint"),
+    amount: str = Query(...),
+    slippage_bps: int = Query(50, alias="slippageBps"),
+    user=Depends(current_user),
+):
+    """Proxy Jupiter quote endpoint."""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as hc:
+            r = await hc.get(
+                "https://api.jup.ag/swap/v1/quote",
+                params={
+                    "inputMint": input_mint, "outputMint": output_mint,
+                    "amount": amount, "slippageBps": slippage_bps,
+                },
+            )
+            if r.status_code != 200:
+                raise HTTPException(400, f"Jupiter error: {r.text[:200]}")
+            return r.json()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Jupiter fetch failed: {e}")
+
+@api.post("/solana/swap-tx")
+async def solana_swap_tx(body: dict, user=Depends(current_user)):
+    """Build a Jupiter swap transaction. `body` must include quoteResponse + userPublicKey."""
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as hc:
+            r = await hc.post("https://api.jup.ag/swap/v1/swap", json=body)
+            if r.status_code != 200:
+                raise HTTPException(400, f"Jupiter swap-tx error: {r.text[:200]}")
+            return r.json()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Jupiter swap-tx failed: {e}")
+
+
+# ---------------- Auto-bridging (LI.FI) ----------------
+@api.get("/bridge/quote")
+async def bridge_quote(
+    from_chain: int = Query(..., alias="fromChain"),
+    to_chain: int = Query(..., alias="toChain"),
+    from_token: str = Query(..., alias="fromToken"),
+    to_token: str = Query(..., alias="toToken"),
+    from_amount: str = Query(..., alias="fromAmount"),
+    from_address: str = Query(..., alias="fromAddress"),
+    user=Depends(current_user),
+):
+    try:
+        async with httpx.AsyncClient(timeout=12.0) as hc:
+            r = await hc.get(
+                "https://li.quest/v1/quote",
+                params={
+                    "fromChain": from_chain, "toChain": to_chain,
+                    "fromToken": from_token, "toToken": to_token,
+                    "fromAmount": from_amount, "fromAddress": from_address,
+                },
+            )
+            if r.status_code != 200:
+                raise HTTPException(400, f"LI.FI: {r.text[:200]}")
+            j = r.json()
+            est = j.get("estimate", {})
+            return {
+                "tool": j.get("tool"),
+                "bridge_name": j.get("toolDetails", {}).get("name", j.get("tool")),
+                "from_amount_usd": est.get("fromAmountUSD"),
+                "to_amount_usd": est.get("toAmountUSD"),
+                "gas_cost_usd": sum(float(g.get("amountUSD") or 0) for g in est.get("gasCosts", [])),
+                "execution_seconds": est.get("executionDuration"),
+                "transaction_request": j.get("transactionRequest"),
+                "raw": j,
+            }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"LI.FI failed: {e}")
+
+@api.get("/bridge/chains")
+async def bridge_chains(user=Depends(current_user)):
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as hc:
+            r = await hc.get("https://li.quest/v1/chains")
+            if r.status_code == 200:
+                return {"chains": [{"id": c["id"], "name": c["name"], "key": c["key"]} for c in r.json().get("chains", [])]}
+    except Exception as e:
+        logger.warning(f"LI.FI chains failed: {e}")
+    return {"chains": []}
+
+
+# ---------------- On-chain PnL reconciliation ----------------
+class ReconcileIn(BaseModel):
+    trade_id: str
+    rpc_url: Optional[str] = None
+
+@api.post("/trades/reconcile")
+async def reconcile_trade(body: ReconcileIn, user=Depends(current_user)):
+    """Fetch the receipt for an on-chain trade and update the trade record with the
+    actual amounts + net_profit. Best-effort — safe to call repeatedly."""
+    trade = await db.trades.find_one(
+        {"id": body.trade_id, "user_id": user["id"]}, {"_id": 0}
+    )
+    if not trade:
+        raise HTTPException(404, "Trade not found")
+    if trade.get("mode") != "ONCHAIN" or not trade.get("tx_hash"):
+        raise HTTPException(400, "Only on-chain trades can be reconciled")
+
+    chain_id = int(trade.get("chain_id") or 0)
+    rpc = body.rpc_url or RPC_MAP.get(chain_id)
+    if not rpc:
+        raise HTTPException(400, f"No RPC for chain {chain_id}")
+
+    try:
+        from web3 import Web3
+    except Exception:
+        raise HTTPException(500, "web3 not available")
+
+    w3 = Web3(Web3.HTTPProvider(rpc, request_kwargs={"timeout": 15}))
+    try:
+        receipt = w3.eth.get_transaction_receipt(trade["tx_hash"])
+    except Exception:
+        return {"status": "pending", "trade": trade}
+
+    if not receipt:
+        return {"status": "pending", "trade": trade}
+
+    status_str = "onchain_success" if receipt.status == 1 else "onchain_failed"
+    # Gas cost in native
+    gas_used = int(receipt.gasUsed)
+    effective = int(receipt.get("effectiveGasPrice") or 0)
+    gas_native = (gas_used * effective) / 1e18
+    native_usd_map = {1: 3500, 137: 0.55, 56: 620, 42161: 3500, 8453: 3500, 480: 3500, 360: 3500}
+    gas_usd = round(gas_native * native_usd_map.get(chain_id, 0), 4)
+
+    # Parse Uniswap V2-style Swap events to compute token amounts moved
+    swap_events = []
+    for log in receipt.logs:
+        topics = [t.hex() for t in log.topics] if log.topics else []
+        if topics and topics[0].lower() == SWAP_EVENT_TOPIC_V2.lower():
+            data = log.data.hex() if hasattr(log.data, "hex") else str(log.data)
+            swap_events.append({"address": log.address, "topic0": topics[0]})
+
+    # net_profit estimation: without a full price index of every token, we conservatively
+    # set net_profit = -gas_usd for failed trades, or leave 0 for success (frontend can refine).
+    net_profit = -gas_usd if status_str == "onchain_failed" else 0.0
+
+    await db.trades.update_one(
+        {"id": trade["id"]},
+        {"$set": {
+            "status": status_str,
+            "gas_fee": gas_usd,
+            "net_profit": round(net_profit, 4),
+            "block_number": int(receipt.blockNumber),
+            "swap_events_count": len(swap_events),
+            "reconciled_at": datetime.now(timezone.utc).isoformat(),
+        }},
+    )
+    updated = await db.trades.find_one({"id": trade["id"]}, {"_id": 0})
+    return {"status": status_str, "gas_usd": gas_usd, "trade": updated}
+
 
 @api.get("/dexes")
 async def dexes(user=Depends(current_user)):

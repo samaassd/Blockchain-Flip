@@ -15,6 +15,7 @@ import { CHAIN_LIST, CHAINS } from "@/src/wallet/appkit";
 import { executeOnChainSwap } from "@/src/wallet/swap";
 import { tokenAddressFor } from "@/src/wallet/contracts";
 import { useWallet } from "@/src/wallet/useWallet";
+import { useSettings } from "@/src/context/SettingsContext";
 
 export default function OpportunityDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -30,15 +31,23 @@ export default function OpportunityDetail() {
   const address = walletState?.address || "";
   const chainId = walletState?.chainId || 0;
 
+  // Global execution-mode preference (Settings screen)
+  const { executionMode: globalMode, setExecutionMode } = useSettings();
+
   const [opp, setOpp] = useState<Opportunity | null>(null);
   const [loading, setLoading] = useState(true);
   const [amount, setAmount] = useState("1000");
   const [executing, setExecuting] = useState(false);
-  const [mode, setMode] = useState<"simulated" | "onchain">(walletConnected ? "onchain" : "simulated");
+  const initialMode = globalMode === "ONCHAIN" && walletConnected ? "onchain" : "simulated";
+  const [mode, setMode] = useState<"simulated" | "onchain">(initialMode);
   const [toast, setToast] = useState<{ type: "success" | "error" | "info"; text: string; link?: string } | null>(null);
   const [error, setError] = useState("");
 
-  useEffect(() => { setMode(walletConnected ? "onchain" : "simulated"); }, [walletConnected]);
+  // Follow global preference — if user flips mode in Settings, mirror it here (only when wallet permits on-chain)
+  useEffect(() => {
+    const wantOnchain = globalMode === "ONCHAIN" && walletConnected;
+    setMode(wantOnchain ? "onchain" : "simulated");
+  }, [globalMode, walletConnected]);
 
   const load = useCallback(async () => {
     try {
@@ -92,7 +101,7 @@ export default function OpportunityDetail() {
         basePriceUsd: opp.base_price,
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-      await api.post("/trades/onchain", {
+      const trade = await api.post("/trades/onchain", {
         opportunity_id: opp.id,
         amount_usd: amt,
         tx_hash: hash,
@@ -100,8 +109,27 @@ export default function OpportunityDetail() {
         wallet_address: address,
         explorer_url: explorer,
       });
-      setToast({ type: "success", text: "Tx submitted on-chain", link: explorer });
-      setTimeout(() => router.replace("/(tabs)/history"), 2000);
+      setToast({ type: "info", text: "Tx submitted • reconciling receipt…", link: explorer });
+      // Poll for receipt reconciliation up to ~2 min
+      let attempts = 0;
+      const poll = async () => {
+        attempts += 1;
+        try {
+          const rec = await api.post("/trades/reconcile", { trade_id: trade.id });
+          if (rec.status && rec.status !== "pending") {
+            setToast({
+              type: rec.status === "onchain_success" ? "success" : "error",
+              text: `Confirmed • gas ${formatUSD(rec.gas_usd || 0)}`,
+              link: explorer,
+            });
+            setTimeout(() => router.replace("/(tabs)/history"), 1600);
+            return;
+          }
+        } catch {}
+        if (attempts < 12) setTimeout(poll, 10000);
+        else setTimeout(() => router.replace("/(tabs)/history"), 1600);
+      };
+      setTimeout(poll, 6000);
     } catch (e: any) {
       const msg = e?.shortMessage || e?.reason || e?.message || "Transaction failed";
       setToast({ type: "error", text: msg });
@@ -146,7 +174,7 @@ export default function OpportunityDetail() {
         <View style={styles.modeToggle}>
           <Pressable
             testID="mode-simulated"
-            onPress={() => setMode("simulated")}
+            onPress={() => { setMode("simulated"); setExecutionMode("SIMULATED"); }}
             style={[styles.modeBtn, mode === "simulated" && styles.modeBtnActive]}
           >
             <Ionicons name="flask" size={14} color={mode === "simulated" ? theme.colors.onBrandPrimary : theme.colors.onSurfaceSecondary} />
@@ -154,7 +182,15 @@ export default function OpportunityDetail() {
           </Pressable>
           <Pressable
             testID="mode-onchain"
-            onPress={() => setMode("onchain")}
+            onPress={() => {
+              if (!walletConnected) {
+                setToast({ type: "info", text: "Connect a wallet first" });
+                connectWallet();
+                return;
+              }
+              setMode("onchain");
+              setExecutionMode("ONCHAIN");
+            }}
             style={[styles.modeBtn, mode === "onchain" && styles.modeBtnActive]}
           >
             <Ionicons name="flash" size={14} color={mode === "onchain" ? theme.colors.onBrandPrimary : theme.colors.onSurfaceSecondary} />
@@ -178,6 +214,14 @@ export default function OpportunityDetail() {
 
         {/* Route visualization */}
         <Text style={styles.sectionTitle}>TRADE ROUTE</Text>
+        {opp.is_cross_chain && (
+          <View style={styles.crossChainBanner} testID="cross-chain-banner">
+            <Ionicons name="git-network" size={14} color={theme.colors.brand} />
+            <Text style={styles.crossChainText}>
+              Cross-chain: bridge {opp.token_symbol} from {opp.buy_dex.chain} → {opp.sell_dex.chain} via LI.FI
+            </Text>
+          </View>
+        )}
         {opp.route?.map((step) => (
           <View key={step.step} style={styles.routeStep}>
             <View style={styles.stepBadge}><Text style={styles.stepBadgeText}>{step.step}</Text></View>
@@ -337,4 +381,6 @@ const styles = StyleSheet.create({
   ctaText: { color: theme.colors.onBrandPrimary, fontWeight: "900", letterSpacing: 1.5, fontSize: 14 },
   toast: { position: "absolute", left: theme.spacing.lg, right: theme.spacing.lg, padding: theme.spacing.md, borderRadius: theme.radius.md, flexDirection: "row", alignItems: "center", gap: 8 },
   toastText: { color: "#fff", fontWeight: "800", fontSize: 13, flex: 1 },
+  crossChainBanner: { flexDirection: "row", alignItems: "center", gap: 8, padding: theme.spacing.md, marginBottom: theme.spacing.sm, borderRadius: theme.radius.md, backgroundColor: theme.colors.brandTertiary, borderWidth: 1, borderColor: theme.colors.brand },
+  crossChainText: { color: theme.colors.brand, fontSize: 12, fontWeight: "800", flex: 1 },
 });
