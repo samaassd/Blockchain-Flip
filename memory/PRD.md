@@ -48,3 +48,7 @@ Ethereum, Polygon, BNB Chain, Arbitrum, Base, World Chain, Shape (EVM) + Solana 
 - Scanner cards: token icon+name is now a button opening the token on its network's block explorer (Etherscan/BscScan/Polygonscan/Basescan/Solscan; falls back to explorer search, then CoinGecko).
 - BUY/SELL DEX pills now show their chain name and open the token page on that specific chain's explorer.
 - Added explorerTokenUrl() + SOLANA_MINTS + extra token addresses (WBTC, WETH, POL, cbBTC) in src/wallet/contracts.ts.
+
+## Update (Aug 28, 2026 — Real price fix)
+- Root cause: CoinGecko 429 rate-limited from the server, so the app silently served hardcoded seed prices (BTC $68k) forever.
+- Fix: added DeFiLlama (coins.llama.fi, keyless) as a live-price fallback in fetch_market_prices(); seed prices now used only if CoinGecko AND DeFiLlama AND cache all fail. CoinGecko keeps 429 backoff (max 5 min) and remains primary for images/24h change.

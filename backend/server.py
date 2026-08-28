@@ -281,7 +281,8 @@ _SEED_PRICES = {
 }
 
 async def fetch_market_prices() -> dict:
-    """Fetch prices from CoinGecko with a resilient cache and backoff on 429."""
+    """Fetch real market prices — CoinGecko primary, DeFiLlama fallback (no key, no strict
+    rate limits). Only uses static seed prices when both live sources AND the cache fail."""
     now = datetime.now(timezone.utc).timestamp()
     cache_ttl = 90  # seconds
 
@@ -289,42 +290,73 @@ async def fetch_market_prices() -> dict:
     if _prices_cache["data"] and (now - _prices_cache["ts"] < cache_ttl):
         return _prices_cache["data"]
 
-    # Backoff: if we recently errored, keep serving cached data
-    if _prices_cache["data"] and (now - _prices_cache["last_error_ts"] < _prices_cache["error_backoff"]):
+    # 1) CoinGecko (rich data: images, 24h change) — skipped while in 429 backoff
+    if now - _prices_cache["last_error_ts"] >= _prices_cache["error_backoff"]:
+        ids = ",".join(t["id"] for t in TOKENS)
+        url = f"{COINGECKO_BASE}/coins/markets"
+        params = {"vs_currency": "usd", "ids": ids, "price_change_percentage": "24h"}
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as hc:
+                r = await hc.get(url, params=params)
+                r.raise_for_status()
+                arr = r.json()
+            data = {row["id"]: row for row in arr}
+            _prices_cache["data"] = data
+            _prices_cache["ts"] = now
+            _prices_cache["error_backoff"] = 0.0
+            return data
+        except Exception as e:
+            logger.warning(f"CoinGecko fetch failed: {e}")
+            _prices_cache["last_error_ts"] = now
+            # exponential backoff up to 5 minutes
+            _prices_cache["error_backoff"] = min(300, max(30, _prices_cache["error_backoff"] * 2 or 30))
+
+    # 2) DeFiLlama fallback — real live prices keyed by CoinGecko id
+    try:
+        llama_ids = ",".join(f"coingecko:{t['id']}" for t in TOKENS)
+        async with httpx.AsyncClient(timeout=10.0) as hc:
+            r = await hc.get(f"https://coins.llama.fi/prices/current/{llama_ids}")
+            r.raise_for_status()
+            coins = r.json().get("coins", {})
+        data = {}
+        for tok in TOKENS:
+            c = coins.get(f"coingecko:{tok['id']}")
+            if not c or not c.get("price"):
+                continue
+            prev = _prices_cache["data"].get(tok["id"], {})
+            price = float(c["price"])
+            data[tok["id"]] = {
+                "id": tok["id"],
+                "symbol": tok["symbol"],
+                "name": prev.get("name") or tok["symbol"],
+                "current_price": price,
+                "price_change_percentage_24h": prev.get("price_change_percentage_24h", 0.0),
+                "market_cap": prev.get("market_cap") or price * 1_000_000,
+                "image": prev.get("image"),
+            }
+        if data:
+            _prices_cache["data"] = data
+            _prices_cache["ts"] = now
+            return data
+    except Exception as e:
+        logger.warning(f"DeFiLlama fetch failed: {e}")
+
+    # 3) Stale cache is better than seed
+    if _prices_cache["data"]:
         return _prices_cache["data"]
 
-    ids = ",".join(t["id"] for t in TOKENS)
-    url = f"{COINGECKO_BASE}/coins/markets"
-    params = {"vs_currency": "usd", "ids": ids, "price_change_percentage": "24h"}
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as hc:
-            r = await hc.get(url, params=params)
-            r.raise_for_status()
-            arr = r.json()
-        data = {row["id"]: row for row in arr}
-        _prices_cache["data"] = data
-        _prices_cache["ts"] = now
-        _prices_cache["error_backoff"] = 0.0
-        return data
-    except Exception as e:
-        logger.warning(f"CoinGecko fetch failed: {e}")
-        _prices_cache["last_error_ts"] = now
-        # exponential backoff up to 5 minutes
-        _prices_cache["error_backoff"] = min(300, max(30, _prices_cache["error_backoff"] * 2 or 30))
-        if _prices_cache["data"]:
-            return _prices_cache["data"]
-        # Bootstrap seed so app is usable when CoinGecko is down on first call
-        seed = {}
-        for tok in TOKENS:
-            price = _SEED_PRICES.get(tok["id"], 1.0)
-            seed[tok["id"]] = {
-                "id": tok["id"], "symbol": tok["symbol"], "name": tok["symbol"],
-                "current_price": price, "price_change_percentage_24h": 0.0,
-                "market_cap": price * 1_000_000, "image": None,
-            }
-        _prices_cache["data"] = seed
-        _prices_cache["ts"] = now - cache_ttl + 30  # allow retry in 30s
-        return seed
+    # 4) Bootstrap seed so the app is usable when everything is down on first call
+    seed = {}
+    for tok in TOKENS:
+        price = _SEED_PRICES.get(tok["id"], 1.0)
+        seed[tok["id"]] = {
+            "id": tok["id"], "symbol": tok["symbol"], "name": tok["symbol"],
+            "current_price": price, "price_change_percentage_24h": 0.0,
+            "market_cap": price * 1_000_000, "image": None,
+        }
+    _prices_cache["data"] = seed
+    _prices_cache["ts"] = now - cache_ttl + 30  # allow retry in 30s
+    return seed
 
 def build_opportunities(prices: dict) -> list:
     """Generate arbitrage opportunities by simulating slight DEX-specific price variations
