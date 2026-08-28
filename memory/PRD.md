@@ -43,3 +43,8 @@ Ethereum, Polygon, BNB Chain, Arbitrum, Base, World Chain, Shape (EVM) + Solana 
 ## Update (Aug 27, 2026 — Profile + Auto Mode)
 - Settings profile: Google account photo (with initials fallback), GOOGLE/EMAIL ACCOUNT badge, dedicated SESSION section with sign-out. Backend PublicUser now includes picture + auth_provider.
 - Auto Mode (simulated trading bot): toggle + min-net-profit threshold ($5/$10/$25/$50) + trade size ($500/$1K/$2.5K) in Settings, persisted in prefs. Scanner auto-executes simulated trades meeting the threshold (max 2 per refresh, 90s per-token cooldown), with AUTO badge, live status strip and trade counter. Never executes on-chain. Iteration 8: all backend + frontend tests pass.
+
+## Update (Aug 28, 2026 — Scanner explorer links)
+- Scanner cards: token icon+name is now a button opening the token on its network's block explorer (Etherscan/BscScan/Polygonscan/Basescan/Solscan; falls back to explorer search, then CoinGecko).
+- BUY/SELL DEX pills now show their chain name and open the token page on that specific chain's explorer.
+- Added explorerTokenUrl() + SOLANA_MINTS + extra token addresses (WBTC, WETH, POL, cbBTC) in src/wallet/contracts.ts.

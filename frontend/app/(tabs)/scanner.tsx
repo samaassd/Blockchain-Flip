@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   View, Text, StyleSheet, FlatList, ActivityIndicator, RefreshControl,
-  Pressable, ScrollView,
+  Pressable, ScrollView, Linking,
 } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
@@ -10,7 +10,25 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api, Opportunity, Trade } from "@/src/api/client";
 import { useSettings } from "@/src/context/SettingsContext";
 import { useAuth } from "@/src/context/AuthContext";
+import { explorerTokenUrl } from "@/src/wallet/contracts";
 import { theme, formatUSD, formatPct } from "@/src/theme";
+
+/** Explorer page for the token — buy chain first, then sell chain, then CoinGecko. */
+function tokenExplorerLink(o: Opportunity, chainId?: number): string {
+  if (chainId != null) {
+    const url = explorerTokenUrl(o.token_id, o.token_symbol, chainId);
+    if (url) return url;
+  }
+  return (
+    explorerTokenUrl(o.token_id, o.token_symbol, o.buy_dex.chain_id) ||
+    explorerTokenUrl(o.token_id, o.token_symbol, o.sell_dex.chain_id) ||
+    `https://www.coingecko.com/en/coins/${o.token_id}`
+  );
+}
+
+function openExplorer(url: string) {
+  Linking.openURL(url).catch(() => {});
+}
 
 const CHAIN_FILTERS = [
   { id: "all", label: "ALL" },
@@ -205,7 +223,15 @@ export default function Scanner() {
               style={({ pressed }) => [styles.card, pressed && { opacity: 0.9 }]}
             >
               <View style={styles.cardTop}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.md, flex: 1 }}>
+                <Pressable
+                  testID={`token-link-${item.token_symbol}`}
+                  onPress={() => openExplorer(tokenExplorerLink(item))}
+                  hitSlop={6}
+                  style={({ pressed }) => [
+                    { flexDirection: "row", alignItems: "center", gap: theme.spacing.md, flex: 1 },
+                    pressed && { opacity: 0.6 },
+                  ]}
+                >
                   {item.token_image ? (
                     <Image source={{ uri: item.token_image }} style={styles.tokenImg} />
                   ) : (
@@ -216,6 +242,7 @@ export default function Scanner() {
                   <View>
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
                       <Text style={styles.pair}>{item.pair}</Text>
+                      <Ionicons name="open-outline" size={13} color={theme.colors.onSurfaceSecondary} />
                       {item.is_cross_chain && (
                         <View style={styles.crossBadge} testID={`cross-${item.token_symbol}`}>
                           <Ionicons name="git-network" size={10} color={theme.colors.brand} />
@@ -225,7 +252,7 @@ export default function Scanner() {
                     </View>
                     <Text style={styles.token}>{item.token_name}</Text>
                   </View>
-                </View>
+                </Pressable>
                 <View style={{ alignItems: "flex-end" }}>
                   <Text style={styles.spread}>{formatPct(item.spread_pct)}</Text>
                   <Text style={styles.spreadLabel}>SPREAD</Text>
@@ -235,17 +262,31 @@ export default function Scanner() {
               <View style={styles.divider} />
 
               <View style={styles.routeRow}>
-                <View style={styles.dexPill}>
-                  <Text style={styles.dexPillLabel}>BUY</Text>
+                <Pressable
+                  testID={`buy-link-${item.token_symbol}`}
+                  onPress={() => openExplorer(tokenExplorerLink(item, item.buy_dex.chain_id))}
+                  style={({ pressed }) => [styles.dexPill, pressed && { opacity: 0.6 }]}
+                >
+                  <View style={styles.dexPillTop}>
+                    <Text style={styles.dexPillLabel}>BUY • {item.buy_dex.chain.toUpperCase()}</Text>
+                    <Ionicons name="open-outline" size={11} color={theme.colors.onSurfaceSecondary} />
+                  </View>
                   <Text style={styles.dexPillName}>{item.buy_dex.name}</Text>
                   <Text style={styles.dexPillPrice}>{formatUSD(item.buy_price, 4)}</Text>
-                </View>
+                </Pressable>
                 <Ionicons name="arrow-forward" size={18} color={theme.colors.brand} />
-                <View style={[styles.dexPill, { borderColor: theme.colors.brandTertiary }]}>
-                  <Text style={[styles.dexPillLabel, { color: theme.colors.brand }]}>SELL</Text>
+                <Pressable
+                  testID={`sell-link-${item.token_symbol}`}
+                  onPress={() => openExplorer(tokenExplorerLink(item, item.sell_dex.chain_id))}
+                  style={({ pressed }) => [styles.dexPill, { borderColor: theme.colors.brandTertiary }, pressed && { opacity: 0.6 }]}
+                >
+                  <View style={styles.dexPillTop}>
+                    <Text style={[styles.dexPillLabel, { color: theme.colors.brand }]}>SELL • {item.sell_dex.chain.toUpperCase()}</Text>
+                    <Ionicons name="open-outline" size={11} color={theme.colors.brand} />
+                  </View>
                   <Text style={styles.dexPillName}>{item.sell_dex.name}</Text>
                   <Text style={styles.dexPillPrice}>{formatUSD(item.sell_price, 4)}</Text>
-                </View>
+                </Pressable>
               </View>
 
               <View style={styles.metaRow}>
@@ -290,6 +331,7 @@ const styles = StyleSheet.create({
   divider: { height: 1, backgroundColor: theme.colors.border, marginVertical: theme.spacing.md },
   routeRow: { flexDirection: "row", alignItems: "center", gap: theme.spacing.sm },
   dexPill: { flex: 1, backgroundColor: theme.colors.surfaceTertiary, padding: theme.spacing.sm, borderRadius: theme.radius.sm, borderWidth: 1, borderColor: theme.colors.border },
+  dexPillTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   dexPillLabel: { color: theme.colors.onSurfaceSecondary, fontSize: 10, fontWeight: "800", letterSpacing: 1 },
   dexPillName: { color: theme.colors.onSurface, fontSize: 14, fontWeight: "800", marginTop: 2 },
   dexPillPrice: { color: theme.colors.onSurfaceSecondary, fontSize: 12, marginTop: 2 },

@@ -56,7 +56,28 @@ export const TOKEN_ADDRESSES: Record<string, Record<number, string>> = {
     1: "0xB50721BCf8d664c30412Cfbc6cf7a15145234ad1",
     42161: "0x912CE59144191C1204E64559FE8253a0e49E6548",
   },
+  bitcoin: {
+    1: "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599",     // WBTC
+    137: "0x1BFD67037B42Cf73acF2047067bd4F2C47D9BfD6",   // WBTC (Polygon)
+    8453: "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",  // cbBTC (Base)
+  },
+  ethereum: {
+    56: "0x2170Ed0880ac9A755fd29B2688956BD959F933F8",    // Binance-peg ETH
+    137: "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619",   // WETH (Polygon)
+  },
+  "polygon-ecosystem-token": {
+    1: "0x455e53CBB86018Ac2B8092FdCd39d8444aFFC3F6",     // POL (mainnet)
+  },
 };
+
+// Solana token mints (for Solscan links)
+export const SOLANA_MINTS: Record<string, string> = {
+  solana: "So11111111111111111111111111111111111111112",   // wSOL
+  bitcoin: "3NZ9JMVBmGAqocybic2c7LQCJScmgsAZ6vQqTDzcqmJh",  // WBTC (Portal)
+  ethereum: "7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs", // WETH (Wormhole)
+};
+
+export const SOLANA_CHAIN_ID = 101;
 
 // USDC per chain — used as the counter-asset when the arb token is the chain's native coin
 export const USDC: Record<number, string> = {
@@ -82,6 +103,23 @@ export function tokenAddressFor(tokenId: string, chainId: number): string | null
 export function explorerTx(chainId: number, hash: string): string {
   const chain = Object.values(CHAINS).find((c) => c.chainId === chainId);
   return `${chain?.explorerUrl || "https://polygonscan.com"}/tx/${hash}`;
+}
+
+/**
+ * Block-explorer page for a token on a given chain (Etherscan, BscScan, Solscan, …).
+ * Falls back to the explorer's search page when the exact contract isn't mapped.
+ */
+export function explorerTokenUrl(tokenId: string, tokenSymbol: string, chainId: number): string | null {
+  if (chainId === SOLANA_CHAIN_ID) {
+    const mint = SOLANA_MINTS[tokenId];
+    return mint ? `https://solscan.io/token/${mint}` : null;
+  }
+  const chain = Object.values(CHAINS).find((c) => c.chainId === chainId);
+  if (!chain) return null;
+  let addr = TOKEN_ADDRESSES[tokenId]?.[chainId];
+  if (!addr && NATIVE_TOKENS[tokenId] === chainId) addr = WRAPPED_NATIVE[chainId];
+  if (addr) return `${chain.explorerUrl}/token/${addr}`;
+  return `${chain.explorerUrl}/search?q=${encodeURIComponent(tokenSymbol)}`;
 }
 
 export const ERC20_ABI = [
